@@ -1,11 +1,10 @@
 // pages/Login.jsx
-// Converted from login.html + script.js
-// Uses React state instead of DOM querySelector + window.location.href
+// Username placeholder: "Username (student / lecturer / admin)", Password field, Login button
 
 function Login({ onLogin }) {
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
-  const [error, setError] = React.useState('')
+  const [error, setError]       = React.useState('')
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -32,7 +31,7 @@ function Login({ onLogin }) {
   return (
     <div className="login-wrapper">
       <div className="login-card">
-        <h1>CIHE Attendance App</h1>
+        <h1>Attendance Web App</h1>
         <p className="subtitle">Secure sign in</p>
 
         <form onSubmit={handleSubmit}>
