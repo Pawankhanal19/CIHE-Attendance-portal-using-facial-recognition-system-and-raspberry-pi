@@ -5,26 +5,31 @@
 
 function App() {
   // 'page' holds the current view: 'login' | 'student' | 'lecturer' | 'admin'
-  const [page, setPage] = React.useState('login')
+  const savedAuth = AttendanceAPI.getAuth()
+  const [currentUser, setCurrentUser] = React.useState(savedAuth?.user || null)
+  const [page, setPage] = React.useState(savedAuth?.user?.role?.toLowerCase() || 'login')
 
-  function handleLogin(role) {
-    setPage(role)
+  function handleLogin(auth) {
+    setCurrentUser(auth.user)
+    setPage(auth.user.role.toLowerCase())
   }
 
   function handleLogout() {
+    AttendanceAPI.clearAuth()
+    setCurrentUser(null)
     setPage('login')
   }
 
   if (page === 'student') {
-    return <StudentPortal onLogout={handleLogout} />
+    return <StudentPortal currentUser={currentUser} onLogout={handleLogout} />
   }
 
   if (page === 'lecturer') {
-    return <LecturerPortal onLogout={handleLogout} />
+    return <LecturerPortal currentUser={currentUser} onLogout={handleLogout} />
   }
 
   if (page === 'admin') {
-    return <AdminPortal onLogout={handleLogout} />
+    return <AdminPortal currentUser={currentUser} onLogout={handleLogout} />
   }
 
   // Default: show login

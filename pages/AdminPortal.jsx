@@ -10,10 +10,11 @@ function AdminPortal({ onLogout }) {
   const [search,       setSearch]       = React.useState('')
   const [roleFilter,   setRoleFilter]   = React.useState('All')
   const [showAddModal, setShowAddModal] = React.useState(false)
-  const [newUser,      setNewUser]      = React.useState({ name: '', role: 'Student', email: '' })
+  const [newUser,      setNewUser]      = React.useState({ name: '', username: '', password: '', role: 'Student', email: '', studentId: '' })
   const [editingId,    setEditingId]    = React.useState(null)
   const [editUser,     setEditUser]     = React.useState({})
   const [infoModal,    setInfoModal]    = React.useState(null) // { title, message, icon }
+  const [systemHealth, setSystemHealth] = React.useState(null)
 
   const navLinks = [{ label: 'Home', href: '#' }]
 
@@ -21,6 +22,39 @@ function AdminPortal({ onLogout }) {
   function showInfo(title, message, icon) {
     setInfoModal({ title, message, icon: icon || '⚠️' })
   }
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function loadAdminData() {
+      try {
+        const [apiUsers, health] = await Promise.all([
+          AttendanceAPI.fetchUsers(),
+          AttendanceAPI.fetchHealth(),
+        ])
+
+        if (!cancelled) {
+          setUsers(apiUsers)
+          setSystemHealth(health)
+        }
+      } catch (error) {
+        console.warn('Backend unavailable, using demo admin data.', error)
+      }
+    }
+
+    loadAdminData()
+    const socket = AttendanceAPI.connectSocket()
+
+    if (socket) {
+      socket.on('users_updated', loadAdminData)
+      socket.on('attendance_updated', loadAdminData)
+    }
+
+    return () => {
+      cancelled = true
+      if (socket) socket.disconnect()
+    }
+  }, [])
 
   function handleViewLogs() {
     showInfo(
@@ -54,30 +88,46 @@ function AdminPortal({ onLogout }) {
     return matchSearch && matchRole
   })
 
-  function handleAddUser() {
-    if (!newUser.name.trim() || !newUser.email.trim()) {
-      alert('Please fill in all fields.')
+  async function handleAddUser() {
+    if (!newUser.name.trim() || !newUser.username.trim() || !newUser.password.trim()) {
+      alert('Please fill in name, username, and password.')
       return
     }
-    setUsers(prev => [...prev, { ...newUser, id: Date.now() }])
-    setNewUser({ name: '', role: 'Student', email: '' })
-    setShowAddModal(false)
+
+    try {
+      const created = await AttendanceAPI.createUser(newUser)
+      setUsers(prev => [created, ...prev])
+      setNewUser({ name: '', username: '', password: '', role: 'Student', email: '', studentId: '' })
+      setShowAddModal(false)
+    } catch (error) {
+      showInfo('Backend Connection', error.message || 'Could not add user. Please check the backend server.', '⚠️')
+    }
   }
 
-  function handleRemove(id) {
+  async function handleRemove(id) {
     if (window.confirm('Remove this user?')) {
-      setUsers(prev => prev.filter(u => u.id !== id))
+      try {
+        await AttendanceAPI.deleteUser(id)
+        setUsers(prev => prev.filter(u => (u._id || u.id) !== id))
+      } catch (error) {
+        showInfo('Backend Connection', error.message || 'Could not remove user. Please check the backend server.', '⚠️')
+      }
     }
   }
 
   function handleEditStart(user) {
-    setEditingId(user.id)
+    setEditingId(user._id || user.id)
     setEditUser({ ...user })
   }
 
-  function handleEditSave() {
-    setUsers(prev => prev.map(u => u.id === editingId ? { ...editUser } : u))
-    setEditingId(null)
+  async function handleEditSave() {
+    try {
+      const updated = await AttendanceAPI.updateUser(editingId, editUser)
+      setUsers(prev => prev.map(u => (u._id || u.id) === editingId ? updated : u))
+      setEditingId(null)
+    } catch (error) {
+      showInfo('Backend Connection', error.message || 'Could not update user. Please check the backend server.', '⚠️')
+    }
   }
 
   // ── Shared inline styles ────────────────────────────────────
@@ -173,9 +223,18 @@ function AdminPortal({ onLogout }) {
                 <input style={inputStyle} placeholder="Full Name"
                   value={newUser.name}
                   onChange={e => setNewUser(p => ({ ...p, name: e.target.value }))} />
+                <input style={inputStyle} placeholder="Username"
+                  value={newUser.username}
+                  onChange={e => setNewUser(p => ({ ...p, username: e.target.value }))} />
+                <input style={inputStyle} type="password" placeholder="Temporary Password"
+                  value={newUser.password}
+                  onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
                 <input style={inputStyle} placeholder="Email"
                   value={newUser.email}
                   onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} />
+                <input style={inputStyle} placeholder="Student ID / Staff ID"
+                  value={newUser.studentId}
+                  onChange={e => setNewUser(p => ({ ...p, studentId: e.target.value }))} />
                 <select style={selectStyle} value={newUser.role}
                   onChange={e => setNewUser(p => ({ ...p, role: e.target.value }))}>
                   <option value="Student">Student</option>
@@ -199,6 +258,11 @@ function AdminPortal({ onLogout }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <input style={inputStyle} value={editUser.name}
                   onChange={e => setEditUser(p => ({ ...p, name: e.target.value }))} />
+                <input style={inputStyle} value={editUser.username || ''}
+                  onChange={e => setEditUser(p => ({ ...p, username: e.target.value }))} />
+                <input style={inputStyle} type="password" placeholder="New password (optional)"
+                  value={editUser.password || ''}
+                  onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))} />
                 <input style={inputStyle} value={editUser.email}
                   onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} />
                 <select style={selectStyle} value={editUser.role}
@@ -225,6 +289,7 @@ function AdminPortal({ onLogout }) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Username</th>
                 <th>Role</th>
                 <th>Email</th>
                 <th>Actions</th>
@@ -233,16 +298,17 @@ function AdminPortal({ onLogout }) {
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ color: '#a3aed0', textAlign: 'center' }}>No users found.</td>
+                  <td colSpan="5" style={{ color: '#a3aed0', textAlign: 'center' }}>No users found.</td>
                 </tr>
               ) : filteredUsers.map(u => (
-                <tr key={u.id}>
+                <tr key={u._id || u.id}>
                   <td>{u.name}</td>
+                  <td>{u.username || '—'}</td>
                   <td>{u.role}</td>
                   <td>{u.email}</td>
                   <td>
                     <button className="btn-edit"   onClick={() => handleEditStart(u)}>Edit</button>
-                    <button className="btn-remove" onClick={() => handleRemove(u.id)}>Remove</button>
+                    <button className="btn-remove" onClick={() => handleRemove(u._id || u.id)}>Remove</button>
                   </td>
                 </tr>
               ))}
@@ -257,9 +323,10 @@ function AdminPortal({ onLogout }) {
             <div className="card-header">
               <h3>System Health</h3>
             </div>
-            <p className="health-line">Uptime: 99.6%</p>
-            <p className="health-line">Raspberry Pi devices online: 4/4</p>
-            <p className="health-line">Last backup: 27 Sept 2025, 11:45 PM</p>
+            <p className="health-line">API Status: {systemHealth?.status || 'Demo mode'}</p>
+            <p className="health-line">Database: {systemHealth?.database || 'Not connected'}</p>
+            <p className="health-line">Raspberry Pi devices online: {systemHealth?.devices_online ?? 0}</p>
+            <p className="health-line">Attendance logs: {systemHealth?.attendance_logs ?? 0}</p>
             <button className="btn-view-logs" onClick={handleViewLogs}>View Logs</button>
           </div>
 

@@ -7,7 +7,20 @@ const initialHistory = [
   { date: '07/09/2025', course: 'ICT306', session: 'Tutorial', status: 'Late',    checkIn: '09:15' },
 ]
 
-function StudentPortal({ onLogout }) {
+function historyRowFromLog(log) {
+  const timestamp = new Date(log.time || log.created_at || Date.now())
+
+  return {
+    id: log.id,
+    date: timestamp.toLocaleDateString('en-GB'),
+    course: log.course_code || 'ICT307',
+    session: log.session || 'Lecture',
+    status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Absent'),
+    checkIn: timestamp.toTimeString().slice(0, 5),
+  }
+}
+
+function StudentPortal({ currentUser, onLogout }) {
   const [scanStatus,   setScanStatus]   = React.useState('Awaiting Scan')
   const [scanning,     setScanning]     = React.useState(false)
   const [studentId,    setStudentId]    = React.useState('')
@@ -19,6 +32,50 @@ function StudentPortal({ onLogout }) {
 
   const historyRef = React.useRef(null)
   const navLinks   = [{ label: 'Home', href: '#' }]
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    async function loadHistory() {
+      try {
+        const filters = currentUser?.studentId ? { person_id: currentUser.studentId } : {}
+        const logs = await AttendanceAPI.fetchRecognitionLogs(20, filters)
+        if (!cancelled && logs.length > 0) {
+          setHistory(logs.map(historyRowFromLog))
+          const latest = logs[0]
+          setScanStatus(latest.status === 'recognised'
+            ? `Face Detected — ${latest.name} Marked Present`
+            : 'Face Not Recognised')
+        }
+      } catch (error) {
+        console.warn('Backend unavailable, using demo student history.', error)
+      }
+    }
+
+    loadHistory()
+    const socket = AttendanceAPI.connectSocket()
+
+    if (socket) {
+      socket.on('face_recognised', (log) => {
+        setHistory(prev => {
+          const row = historyRowFromLog(log)
+          return [row, ...prev.filter(item => item.id !== row.id)].slice(0, 20)
+        })
+        setScanStatus(log.status === 'recognised'
+          ? `Face Detected — ${log.name} Marked Present`
+          : 'Face Not Recognised')
+        showToast(log.status === 'recognised'
+          ? `${log.name} marked Present.`
+          : 'Unrecognised face detected.',
+          log.status === 'recognised' ? 'success' : 'warning')
+      })
+    }
+
+    return () => {
+      cancelled = true
+      if (socket) socket.disconnect()
+    }
+  }, [])
 
   // ── Toast helper ────────────────────────────────────────────
   function showToast(message, type = 'success') {
@@ -38,22 +95,40 @@ function StudentPortal({ onLogout }) {
     setScanStatus('Scanning…')
     showToast('Face scan started. Please look at the camera.', 'info')
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const now      = new Date()
-      const timeStr  = now.toTimeString().slice(0, 5)
-      const dateStr  = now.toLocaleDateString('en-GB').replace(/\//g, '/').split('/').map((p, i) =>
-        i < 2 ? p.padStart(2, '0') : p
-      ).join('/')
 
-      setScanStatus('✓ Face Detected — Marked Present')
-      setScanning(false)
-      showToast('Face recognised! You have been marked Present for ICT307.', 'success')
+      try {
+        const response = await AttendanceAPI.sendRecognition({
+          person_id: 'STU001',
+          name: 'Diya Shrestha',
+          confidence: 91.4,
+          status: 'recognised',
+          time: now.toISOString(),
+          device_id: 'frontend-demo-scan',
+          course_code: 'ICT307',
+          session: 'Lecture',
+        })
 
-      // Add a new entry to history
-      setHistory(prev => [
-        { date: dateStr, course: 'ICT307', session: 'Lecture', status: 'Present', checkIn: timeStr },
-        ...prev,
-      ])
+        setHistory(prev => {
+          const row = historyRowFromLog(response.log)
+          return [row, ...prev.filter(item => item.id !== row.id)].slice(0, 20)
+        })
+        setScanStatus(`Face Detected — ${response.log.name} Marked Present`)
+        showToast('Face recognised and saved to MongoDB.', 'success')
+      } catch (error) {
+        const timeStr = now.toTimeString().slice(0, 5)
+        const dateStr = now.toLocaleDateString('en-GB')
+
+        setHistory(prev => [
+          { date: dateStr, course: 'ICT307', session: 'Lecture', status: 'Present', checkIn: timeStr },
+          ...prev,
+        ])
+        setScanStatus('Face Detected — Marked Present')
+        showToast('Demo scan completed. Start the backend to save this in MongoDB.', 'warning')
+      } finally {
+        setScanning(false)
+      }
     }, 2500)
   }
 
@@ -83,9 +158,11 @@ function StudentPortal({ onLogout }) {
       showToast('Please capture or upload a face image first.', 'warning')
       return
     }
-    showToast(`Face enrolled successfully for Student ID: ${studentId}.`, 'success')
-    setStudentId('')
-    setCaptured(false)
+    showModal(
+      'Face Enrolment Restricted',
+      'Only an Admin or Lecturer can create or update student access records. Please contact authorised staff.',
+      '🔒'
+    )
   }
 
   // ── View History ─────────────────────────────────────────────

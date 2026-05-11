@@ -1,30 +1,30 @@
 // pages/Login.jsx
-// Username placeholder: "Username (student / lecturer / admin)", Password field, Login button
-
 function Login({ onLogin }) {
   const [username, setUsername] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError]       = React.useState('')
+  const [loading, setLoading]   = React.useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setLoading(true)
 
     const user = username.toLowerCase().trim()
 
     if (!user || !password) {
       setError('Please enter both a username and password.')
+      setLoading(false)
       return
     }
 
-    if (user.includes('admin')) {
-      onLogin('admin')
-    } else if (user.includes('lecturer')) {
-      onLogin('lecturer')
-    } else if (user.includes('student')) {
-      onLogin('student')
-    } else {
-      setError("Invalid login. Use a username containing 'admin', 'lecturer', or 'student'.")
+    try {
+      const auth = await AttendanceAPI.login(username, password)
+      onLogin(auth)
+    } catch (error) {
+      setError(error.message || 'Login failed.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -37,7 +37,7 @@ function Login({ onLogin }) {
         <form onSubmit={handleSubmit}>
           <input
             type="text"
-            placeholder="Username (student / lecturer / admin)"
+            placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -48,7 +48,9 @@ function Login({ onLogin }) {
             onChange={(e) => setPassword(e.target.value)}
           />
           {error && <p className="login-error">{error}</p>}
-          <button type="submit" className="login-btn">Login</button>
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
         </form>
       </div>
     </div>

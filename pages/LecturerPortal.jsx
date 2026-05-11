@@ -10,7 +10,7 @@ const initialAlerts = [
   { id: 2, message: 'Network restored at ',           highlight: '09:12' },
 ]
 
-function LecturerPortal({ onLogout }) {
+function LecturerPortal({ currentUser, onLogout }) {
   const [courseCode,    setCourseCode]    = React.useState('')
   const [roomSession,   setRoomSession]   = React.useState('')
   const [sessionActive, setSessionActive] = React.useState(false)
@@ -23,8 +23,53 @@ function LecturerPortal({ onLogout }) {
   const [modal,         setModal]         = React.useState(null)  // { title, body, icon }
   const [overrideId,    setOverrideId]    = React.useState(null)  // student id being overridden
   const [overrideVal,   setOverrideVal]   = React.useState('Present')
+  const [newStudent,    setNewStudent]    = React.useState({ name: '', username: '', password: '', email: '', studentId: '' })
 
   const navLinks = [{ label: 'Home', href: '#' }]
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    function attendanceRowFromLog(log) {
+      const timestamp = new Date(log.time || log.created_at || Date.now())
+      return {
+        id: log.id,
+        name: log.name,
+        status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Not Recognized'),
+        time: timestamp.toTimeString().slice(0, 5),
+        recognized: log.status === 'recognised',
+      }
+    }
+
+    async function loadAttendance() {
+      try {
+        const logs = await AttendanceAPI.fetchRecognitionLogs(20)
+        if (!cancelled && logs.length > 0) {
+          setAttendance(logs.map(attendanceRowFromLog))
+          setSynced(logs.length)
+          setPendingSync(0)
+        }
+      } catch (error) {
+        console.warn('Backend unavailable, using demo lecturer data.', error)
+      }
+    }
+
+    loadAttendance()
+    const socket = AttendanceAPI.connectSocket()
+
+    if (socket) {
+      socket.on('attendance_updated', (log) => {
+        setAttendance(prev => [attendanceRowFromLog(log), ...prev].slice(0, 20))
+        setSynced(s => s + 1)
+        showToast(`${log.name} attendance updated from Raspberry Pi.`, 'success')
+      })
+    }
+
+    return () => {
+      cancelled = true
+      if (socket) socket.disconnect()
+    }
+  }, [])
 
   // ── Toast helper (auto-dismisses after 3s) ──────────────────
   function showToast(message, type = 'success') {
@@ -45,6 +90,21 @@ function LecturerPortal({ onLogout }) {
     }
     setSessionActive(true)
     showToast(`Session started for ${courseCode}${roomSession ? ' — ' + roomSession : ''}.`, 'success')
+  }
+
+  async function handleAddStudent() {
+    if (!newStudent.name.trim() || !newStudent.username.trim() || !newStudent.password.trim()) {
+      showToast('Please enter student name, username, and password.', 'error')
+      return
+    }
+
+    try {
+      await AttendanceAPI.createUser({ ...newStudent, role: 'Student' })
+      setNewStudent({ name: '', username: '', password: '', email: '', studentId: '' })
+      showToast('Student login created successfully.', 'success')
+    } catch (error) {
+      showToast(error.message || 'Could not create student login.', 'error')
+    }
   }
 
   function handleStopSession() {
@@ -259,6 +319,47 @@ function LecturerPortal({ onLogout }) {
           <h1>Lecturer Dashboard</h1>
           <p>Raspberry Pi • OpenCV • Secure Sync</p>
         </header>
+
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div className="card-header">
+            <h3>Add Student Login</h3>
+          </div>
+          <div className="session-bar">
+            <input
+              type="text"
+              placeholder="Student name"
+              value={newStudent.name}
+              onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))}
+            />
+            <input
+              type="text"
+              placeholder="Username"
+              value={newStudent.username}
+              onChange={e => setNewStudent(p => ({ ...p, username: e.target.value }))}
+            />
+            <input
+              type="password"
+              placeholder="Temporary password"
+              value={newStudent.password}
+              onChange={e => setNewStudent(p => ({ ...p, password: e.target.value }))}
+            />
+            <input
+              type="text"
+              placeholder="Student ID"
+              value={newStudent.studentId}
+              onChange={e => setNewStudent(p => ({ ...p, studentId: e.target.value }))}
+            />
+            <input
+              type="email"
+              placeholder="Email"
+              value={newStudent.email}
+              onChange={e => setNewStudent(p => ({ ...p, email: e.target.value }))}
+            />
+            <button className="btn-secondary-blue" onClick={handleAddStudent}>
+              Add Student
+            </button>
+          </div>
+        </div>
 
         {/* Session control card */}
         <div className="card" style={{ marginBottom: '20px' }}>
