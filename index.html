@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CIHE Attendance App</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- React & ReactDOM via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel to compile JSX in the browser -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Socket.IO client for live backend updates -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!--
+    Load each component file in order (dependencies first).
+    type="text/babel" tells Babel to compile the JSX.
+  -->
+  <script src="frontend/api.js"></script>
+  <script type="text/babel" src="components/Sidebar.jsx"></script>
+  <script type="text/babel" src="pages/Login.jsx"></script>
+  <script type="text/babel" src="pages/StudentPortal.jsx"></script>
+  <script type="text/babel" src="pages/LecturerPortal.jsx"></script>
+  <script type="text/babel" src="pages/AdminPortal.jsx"></script>
+  <script type="text/babel" src="App.jsx"></script>
+</body>
+</html>
