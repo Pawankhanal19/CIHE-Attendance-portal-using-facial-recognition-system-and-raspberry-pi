@@ -4,6 +4,11 @@ import cv2
 import time
 import os
 import csv
+import json
+import queue
+import threading
+import atexit
+import requests
 from datetime import datetime
 from picamera2 import Picamera2
 
@@ -12,20 +17,81 @@ ATTENDANCE_DIR = "attendance"
 TOLERANCE = 0.45        # lower = stricter match (0.4–0.5 is good)
 PROCESS_EVERY_N = 3     # process every Nth frame for speed
 SCALE = 0.5             # downscale for faster detection
+OFFLINE_FILE   = "pending_attendance.jsonl"
 
-def mark_attendance(name, logged_today):
+API_URL        = os.getenv("ATTENDANCE_API_URL", "http://localhost:5050")
+DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
+DEVICE_ID      = os.getenv("DEVICE_ID", "raspberry-pi-door-01")
+
+# ── Offline-capable API queue ─────────────────────────────────────────────────
+_q = queue.Queue()
+
+def _load_pending():
+    if os.path.exists(OFFLINE_FILE):
+        with open(OFFLINE_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    _q.put(json.loads(line))
+        os.remove(OFFLINE_FILE)
+
+def _save_pending():
+    if _q.empty():
+        return
+    with open(OFFLINE_FILE, "w") as f:
+        while not _q.empty():
+            f.write(json.dumps(_q.get()) + "\n")
+
+def _api_worker():
+    while True:
+        payload = _q.get()
+        sent = False
+        while not sent:
+            try:
+                headers = {"x-api-key": DEVICE_API_KEY} if DEVICE_API_KEY else {}
+                r = requests.post(f"{API_URL}/api/recognition",
+                                  json=payload, headers=headers, timeout=5)
+                data = r.json()
+                print(f"[API] {data.get('message','?')}: {payload.get('person_id')}")
+                sent = True
+            except requests.exceptions.RequestException as e:
+                print(f"[API] offline ({e}), retry in 10s")
+                time.sleep(10)
+        _q.task_done()
+
+_load_pending()
+threading.Thread(target=_api_worker, daemon=True).start()
+atexit.register(_save_pending)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def mark_attendance(name, confidence, logged_today):
     if name in logged_today or name == "Unknown":
         return
     today = datetime.now().strftime("%Y-%m-%d")
     timestamp = datetime.now().strftime("%H:%M:%S")
+
+    # Send to web app (non-blocking; queued and retried if offline)
+    _q.put({
+        "person_id":   name,
+        "confidence":  round(confidence * 100, 1),  # server expects 0–100
+        "status":      "recognised",
+        "time":        datetime.now().isoformat(),
+        "device_id":   DEVICE_ID,
+        "device_name": "Raspberry Pi Door Camera",
+        "location":    "Main Entrance",
+        "course_code": "ICT307",
+        "session":     "Lecture",
+    })
+
+    # CSV local backup
     csv_path = os.path.join(ATTENDANCE_DIR, f"attendance_{today}.csv")
     new_file = not os.path.exists(csv_path)
-
     with open(csv_path, "a", newline="") as f:
         writer = csv.writer(f)
         if new_file:
-            writer.writerow(["Name", "Date", "Time"])
-        writer.writerow([name, today, timestamp])
+            writer.writerow(["Name", "Date", "Time", "Confidence"])
+        writer.writerow([name, today, timestamp, f"{confidence:.3f}"])
+
     logged_today.add(name)
     print(f"[ATTENDANCE] {name} marked at {timestamp}")
 
@@ -72,12 +138,14 @@ def main():
                 distances = face_recognition.face_distance(
                     data["encodings"], encoding)
                 name = "Unknown"
+                confidence = 0.0
                 if len(distances) > 0:
                     best = distances.argmin()
                     if distances[best] < TOLERANCE:
                         name = data["names"][best]
+                        confidence = 1.0 - distances[best]
                 names.append(name)
-                mark_attendance(name, logged_today)
+                mark_attendance(name, confidence, logged_today)
 
             # Scale boxes back to full frame size
             last_boxes = [(int(t/SCALE), int(r/SCALE), int(b/SCALE), int(l/SCALE))
