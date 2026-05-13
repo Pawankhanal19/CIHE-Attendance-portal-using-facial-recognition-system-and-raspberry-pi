@@ -5,11 +5,7 @@ const initialUsers = [
   { id: 2, name: 'Dr. Sarah Johnson', role: 'Lecturer', email: 'sj@example.com' },
 ]
 
-<<<<<<< HEAD
-function AdminPortal({ onLogout }) {
-=======
 function AdminPortal({ currentUser, onLogout }) {
->>>>>>> my-project
   const [users,        setUsers]        = React.useState(initialUsers)
   const [search,       setSearch]       = React.useState('')
   const [roleFilter,   setRoleFilter]   = React.useState('All')
@@ -17,15 +13,10 @@ function AdminPortal({ currentUser, onLogout }) {
   const [newUser,      setNewUser]      = React.useState({ name: '', username: '', password: '', role: 'Student', email: '', studentId: '' })
   const [editingId,    setEditingId]    = React.useState(null)
   const [editUser,     setEditUser]     = React.useState({})
-<<<<<<< HEAD
-  const [infoModal,    setInfoModal]    = React.useState(null) // { title, message, icon }
-  const [systemHealth, setSystemHealth] = React.useState(null)
-=======
   const [infoModal,    setInfoModal]    = React.useState(null)
   const [systemHealth, setSystemHealth] = React.useState(null)
   const [logsModal,    setLogsModal]    = React.useState(null)   // array of log objects
   const [analytics,    setAnalytics]    = React.useState(null)   // analytics object
->>>>>>> my-project
 
   const navLinks = [{ label: 'Home', href: '#' }]
 
@@ -67,30 +58,6 @@ function AdminPortal({ currentUser, onLogout }) {
     }
   }, [])
 
-<<<<<<< HEAD
-  function handleViewLogs() {
-    showInfo(
-      'System Logs',
-      'Could not display system logs at this moment. Please ensure the backend server is running and try again.',
-      '📋'
-    )
-  }
-
-  function handleAttendanceAnalytics() {
-    showInfo(
-      'Attendance Analytics',
-      'Could not display attendance analytics at this moment. This feature requires a live backend connection.',
-      '📊'
-    )
-  }
-
-  function handleComplianceReport() {
-    showInfo(
-      'Compliance Report',
-      'Could not display the compliance report at this moment. Please ensure the backend server is running and try again.',
-      '📄'
-    )
-=======
   async function handleViewLogs() {
     try {
       const data = await AttendanceAPI.fetchAnalytics()
@@ -143,7 +110,6 @@ function AdminPortal({ currentUser, onLogout }) {
     } catch (error) {
       showInfo('Compliance Report', 'Could not generate report. Please ensure the backend server is running.', '📄')
     }
->>>>>>> my-project
   }
 
   // ── User management helpers ─────────────────────────────────
@@ -222,11 +188,7 @@ function AdminPortal({ currentUser, onLogout }) {
 
   return (
     <div className="dashboard-body">
-<<<<<<< HEAD
-      <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} />
-=======
       <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
->>>>>>> my-project
 
       <main className="main-content">
 
@@ -284,8 +246,6 @@ function AdminPortal({ currentUser, onLogout }) {
           </div>
         )}
 
-<<<<<<< HEAD
-=======
         {/* ── View Logs modal ── */}
         {logsModal && (
           <div style={overlayStyle} onClick={() => setLogsModal(null)}>
@@ -355,7 +315,6 @@ function AdminPortal({ currentUser, onLogout }) {
           </div>
         )}
 
->>>>>>> my-project
         {/* ── Add User modal ── */}
         {showAddModal && (
           <div style={overlayStyle}>

@@ -118,12 +118,8 @@ body {
    ===================================================== */
 .dashboard-body {
   width: 100%;
-<<<<<<< HEAD
-  min-height: 100vh;
-=======
   height: 100vh;
   overflow: hidden;
->>>>>>> my-project
   display: flex;
   background-color: #eaf1fb;
 }
@@ -138,14 +134,10 @@ body {
   flex-direction: column;
   gap: 0;
   border-right: 1px solid #e2e8f0;
-<<<<<<< HEAD
-  min-height: 100vh;
-=======
   height: 100vh;
   overflow-y: auto;
   position: sticky;
   top: 0;
->>>>>>> my-project
 }
 
 .logo {
@@ -164,21 +156,6 @@ body {
   font-size: 11px;
 }
 
-<<<<<<< HEAD
-.user-status {
-  background: #eef4ff;
-  border: 1px solid #d0dcf8;
-  padding: 12px 14px;
-  border-radius: 10px;
-  margin-bottom: 22px;
-  text-align: center;
-  color: #4a5a8a;
-  font-size: 13px;
-}
-
-.user-status strong {
-  color: #3b5bdb;
-=======
 .sidebar-profile {
   display: flex;
   align-items: center;
@@ -232,7 +209,6 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
->>>>>>> my-project
 }
 
 nav {

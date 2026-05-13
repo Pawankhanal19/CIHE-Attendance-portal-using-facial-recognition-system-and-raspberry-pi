@@ -5,6 +5,7 @@ const express = require('express')
 const http = require('http')
 const mongoose = require('mongoose')
 const crypto = require('crypto')
+const axios = require('axios')
 const { Server } = require('socket.io')
 
 const app = express()
@@ -15,6 +16,9 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cihe_a
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*'
 const DEVICE_API_KEY = process.env.DEVICE_API_KEY || ''
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-auth-secret-change-me'
+const PI_API_KEY = process.env.PI_API_KEY || ''
+const PI_CONTROL_URL = process.env.PI_CONTROL_URL || ''
+const PI_CONTROL_KEY = process.env.PI_CONTROL_KEY || ''
 
 app.use(cors({ origin: FRONTEND_ORIGIN === '*' ? true : FRONTEND_ORIGIN }))
 app.use(express.json({ limit: '2mb' }))
@@ -70,11 +74,6 @@ const attendanceLogSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
-<<<<<<< HEAD
-const User = mongoose.model('User', userSchema)
-const Device = mongoose.model('Device', deviceSchema)
-const AttendanceLog = mongoose.model('AttendanceLog', attendanceLogSchema)
-=======
 const classSessionSchema = new mongoose.Schema(
   {
     courseCode:   { type: String, required: true, trim: true },
@@ -104,7 +103,6 @@ const Device = mongoose.model('Device', deviceSchema)
 const AttendanceLog = mongoose.model('AttendanceLog', attendanceLogSchema)
 const SessionNote = mongoose.model('SessionNote', sessionNoteSchema)
 const ClassSession = mongoose.model('ClassSession', classSessionSchema)
->>>>>>> my-project
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
@@ -181,6 +179,7 @@ app.get('/', (req, res) => {
     users: '/api/users',
     recognition_logs: '/api/recognition-logs',
     raspberry_pi_endpoint: 'POST /api/recognition',
+    pi_attendance_endpoint: 'POST /api/pi/attendance',
   })
 })
 
@@ -192,6 +191,14 @@ function requireDeviceKey(req, res, next) {
     return res.status(401).json({ message: 'Invalid or missing device API key.' })
   }
 
+  next()
+}
+
+function requirePiKey(req, res, next) {
+  if (!PI_API_KEY) return next()
+  if (req.headers['x-api-key'] !== PI_API_KEY) {
+    return res.status(401).json({ message: 'Invalid or missing Pi API key.' })
+  }
   next()
 }
 
@@ -380,8 +387,6 @@ app.get('/api/devices', async (req, res) => {
   res.json(devices)
 })
 
-<<<<<<< HEAD
-=======
 app.put('/api/recognition-logs/:id', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
   const { attendanceStatus } = req.body
   if (!['Present', 'Late', 'Absent', 'Denied'].includes(attendanceStatus)) {
@@ -415,6 +420,8 @@ app.get('/api/analytics', requireAuth, requireRoles(['Admin', 'Lecturer']), asyn
   res.json({ total, present, late, absent, denied, byCourse, recentLogs: recentLogs.map(toClientLog) })
 })
 
+// ── Class sessions ──────────────────────────────────────────────────────────
+
 app.post('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
   const { courseCode, room } = req.body
   if (!courseCode || !courseCode.trim()) {
@@ -435,7 +442,22 @@ app.post('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), asyn
     startTime: new Date(),
   })
 
-  res.status(201).json(session)
+  // Attempt to start Pi recognition (non-blocking — won't fail the session if Pi is offline)
+  let piStatus = null
+  if (PI_CONTROL_URL && PI_CONTROL_KEY) {
+    try {
+      const piResp = await axios.post(
+        `${PI_CONTROL_URL}/control/start`,
+        { sessionId: session._id.toString() },
+        { headers: { 'x-control-key': PI_CONTROL_KEY }, timeout: 8000 }
+      )
+      piStatus = piResp.data
+    } catch (err) {
+      piStatus = { error: 'Pi unreachable', detail: err.message }
+    }
+  }
+
+  res.status(201).json({ ...session.toObject(), piStatus })
 })
 
 app.put('/api/sessions/:id/stop', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
@@ -445,7 +467,23 @@ app.put('/api/sessions/:id/stop', requireAuth, requireRoles(['Admin', 'Lecturer'
     { new: true }
   )
   if (!session) return res.status(404).json({ message: 'Session not found.' })
-  res.json(session)
+
+  // Attempt to stop Pi recognition (non-blocking)
+  let piStatus = null
+  if (PI_CONTROL_URL && PI_CONTROL_KEY) {
+    try {
+      const piResp = await axios.post(
+        `${PI_CONTROL_URL}/control/stop`,
+        {},
+        { headers: { 'x-control-key': PI_CONTROL_KEY }, timeout: 8000 }
+      )
+      piStatus = piResp.data
+    } catch (err) {
+      piStatus = { error: 'Pi unreachable' }
+    }
+  }
+
+  res.json({ ...session.toObject(), piStatus })
 })
 
 app.get('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
@@ -454,6 +492,27 @@ app.get('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), async
   const sessions = await ClassSession.find(query).sort({ startTime: -1 }).limit(limit)
   res.json(sessions)
 })
+
+// Pi status proxy — must be defined before /api/sessions/:id routes to avoid conflict
+app.get('/api/sessions/pi-status', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const activeSession = await ClassSession.findOne({ status: 'active' }).sort({ startTime: -1 })
+
+  if (!PI_CONTROL_URL || !PI_CONTROL_KEY) {
+    return res.json({ activeSession, pi: { online: false, error: 'Pi not configured in server .env' } })
+  }
+
+  try {
+    const piResp = await axios.get(`${PI_CONTROL_URL}/control/status`, {
+      headers: { 'x-control-key': PI_CONTROL_KEY },
+      timeout: 3000,
+    })
+    res.json({ activeSession, pi: piResp.data })
+  } catch (err) {
+    res.json({ activeSession, pi: { online: false } })
+  }
+})
+
+// ── Session notes ───────────────────────────────────────────────────────────
 
 app.post('/api/session-notes', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
   const { notes, courseCode, session } = req.body
@@ -483,6 +542,8 @@ app.get('/api/session-notes', requireAuth, requireRoles(['Admin', 'Lecturer']), 
   res.json(notes)
 })
 
+// ── Weekly attendance ───────────────────────────────────────────────────────
+
 app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
   const personId = req.query.person_id
   if (!personId) return res.status(400).json({ message: 'person_id query parameter is required.' })
@@ -496,15 +557,13 @@ app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
 
   if (myLogs.length === 0) return res.json([])
 
-  // Any day where ANY student was recognised counts as a class day
   const classDaySet = new Set(allLogs.map(l => new Date(l.timestamp).toISOString().slice(0, 10)))
 
-  // Map of dates this student attended: YYYY-MM-DD → hours attended
   const myDayMap = {}
   for (const log of myLogs) {
     const dk = new Date(log.timestamp).toISOString().slice(0, 10)
     if (log.attendanceStatus === 'Present' || log.attendanceStatus === 'Late') {
-      myDayMap[dk] = HOURS_PER_SESSION  // one class per day — multiple scans don't stack
+      myDayMap[dk] = HOURS_PER_SESSION
     } else if (!myDayMap[dk]) {
       myDayMap[dk] = 0
     }
@@ -571,7 +630,6 @@ app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
     cursor.setDate(cursor.getDate() + 7)
   }
 
-  // Semester Proj. Attd. — if student attends 100% of remaining weeks, max possible %
   const avgWeeklyClass = weeks.reduce((s, w) => s + w.weeklyClassHrs, 0) / weeks.length || HOURS_PER_SESSION * 3
   for (let i = 0; i < weeks.length; i++) {
     const futureClass    = (weeks.length - 1 - i) * avgWeeklyClass
@@ -586,7 +644,57 @@ app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
   res.json(weeks)
 })
 
->>>>>>> my-project
+// ── Pi attendance receiver ──────────────────────────────────────────────────
+// Called by the Pi's api_client.py (new integration format)
+
+app.post('/api/pi/attendance', requirePiKey, async (req, res) => {
+  const { studentId, confidence, timestamp, sessionId } = req.body
+  if (!studentId) return res.status(400).json({ message: 'studentId required' })
+
+  const user = await User.findOne({ studentId, active: true })
+  if (!user) return res.status(404).json({ message: 'Student not found' })
+
+  // Prevent duplicate marks for the same student on the same day
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const existing = await AttendanceLog.findOne({
+    personId: studentId,
+    status: 'recognised',
+    timestamp: { $gte: dayStart, $lt: dayEnd },
+  })
+  if (existing) {
+    return res.json({ status: 'already_marked', log: toClientLog(existing) })
+  }
+
+  // Resolve active session for courseCode tagging
+  const activeSession = sessionId
+    ? await ClassSession.findById(sessionId).catch(() => null)
+    : await ClassSession.findOne({ status: 'active' }).sort({ startTime: -1 })
+
+  const log = await AttendanceLog.create({
+    personId: studentId,
+    user: user._id,
+    name: user.name,
+    confidence: confidence != null ? Math.round(confidence * 100) : null,
+    status: 'recognised',
+    attendanceStatus: 'Present',
+    courseCode: activeSession?.courseCode || 'ICT307',
+    session: activeSession?._id?.toString() || 'Lecture',
+    deviceId: 'raspberry-pi',
+    timestamp: timestamp ? new Date(timestamp) : new Date(),
+  })
+
+  const clientLog = toClientLog(log)
+  io.emit('face_recognised', clientLog)
+  io.emit('attendance_updated', clientLog)
+
+  console.log(`[PI] ${user.name} marked present`)
+  res.status(201).json({ status: 'marked', log: clientLog })
+})
+
+// ── Error handler ───────────────────────────────────────────────────────────
+
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(500).json({ message: 'Server error.', detail: err.message })
@@ -598,7 +706,7 @@ async function start() {
 
   await seedDefaultUsers()
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Attendance API running on http://localhost:${PORT}`)
   })
 }

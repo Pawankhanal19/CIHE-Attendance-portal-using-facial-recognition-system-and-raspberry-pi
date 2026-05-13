@@ -90,8 +90,6 @@ const AttendanceAPI = {
     return this.request('/api/health')
   },
 
-<<<<<<< HEAD
-=======
   fetchWeeklyAttendance(personId) {
     return this.request(`/api/weekly-attendance?person_id=${encodeURIComponent(personId)}`)
   },
@@ -131,7 +129,10 @@ const AttendanceAPI = {
     return this.request(`/api/session-notes?${params.toString()}`)
   },
 
->>>>>>> my-project
+  fetchPiStatus() {
+    return this.request('/api/sessions/pi-status')
+  },
+
   connectSocket() {
     if (!window.io) return null
     return window.io(API_BASE_URL)

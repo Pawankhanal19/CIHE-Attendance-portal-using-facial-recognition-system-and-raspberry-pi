@@ -9,10 +9,6 @@ const initialHistory = [
 
 function historyRowFromLog(log) {
   const timestamp = new Date(log.time || log.created_at || Date.now())
-<<<<<<< HEAD
-
-=======
->>>>>>> my-project
   return {
     id: log.id,
     date: timestamp.toLocaleDateString('en-GB'),
@@ -24,19 +20,6 @@ function historyRowFromLog(log) {
 }
 
 function StudentPortal({ currentUser, onLogout }) {
-<<<<<<< HEAD
-  const [scanStatus,   setScanStatus]   = React.useState('Awaiting Scan')
-  const [scanning,     setScanning]     = React.useState(false)
-  const [studentId,    setStudentId]    = React.useState('')
-  const [captured,     setCaptured]     = React.useState(false)
-  const [history,      setHistory]      = React.useState(initialHistory)
-  const [toast,        setToast]        = React.useState(null)   // { message, type }
-  const [modal,        setModal]        = React.useState(null)   // { title, body, icon }
-  const [showHistory,  setShowHistory]  = React.useState(false)  // scroll-to ref flag
-
-  const historyRef = React.useRef(null)
-  const navLinks   = [{ label: 'Home', href: '#' }]
-=======
   const [scanStatus,    setScanStatus]    = React.useState('Awaiting Scan')
   const [scanning,      setScanning]      = React.useState(false)
   const [studentId,     setStudentId]     = React.useState('')
@@ -53,7 +36,6 @@ function StudentPortal({ currentUser, onLogout }) {
     { label: 'Home',          href: '#' },
     { label: 'Weekly Report', href: '#' },
   ]
->>>>>>> my-project
 
   React.useEffect(() => {
     let cancelled = false
@@ -110,8 +92,6 @@ function StudentPortal({ currentUser, onLogout }) {
     setModal({ title, body, icon: icon || 'ℹ️' })
   }
 
-<<<<<<< HEAD
-=======
   // ── Nav handler (called by Sidebar for all link clicks) ─────
   async function handleNav(label) {
     if (label === 'Weekly Report') {
@@ -136,7 +116,6 @@ function StudentPortal({ currentUser, onLogout }) {
     }
   }
 
->>>>>>> my-project
   // ── Start Scan ──────────────────────────────────────────────
   function handleStartScan() {
     if (scanning) return
@@ -145,22 +124,6 @@ function StudentPortal({ currentUser, onLogout }) {
     showToast('Face scan started. Please look at the camera.', 'info')
 
     setTimeout(async () => {
-<<<<<<< HEAD
-      const now      = new Date()
-
-      try {
-        const response = await AttendanceAPI.sendRecognition({
-          person_id: 'STU001',
-          name: 'Diya Shrestha',
-          confidence: 91.4,
-          status: 'recognised',
-          time: now.toISOString(),
-          device_id: 'frontend-demo-scan',
-          course_code: 'ICT307',
-          session: 'Lecture',
-        })
-
-=======
       const now = new Date()
       try {
         const response = await AttendanceAPI.sendRecognition({
@@ -173,7 +136,6 @@ function StudentPortal({ currentUser, onLogout }) {
           course_code: 'ICT307',
           session: 'Lecture',
         })
->>>>>>> my-project
         setHistory(prev => {
           const row = historyRowFromLog(response.log)
           return [row, ...prev.filter(item => item.id !== row.id)].slice(0, 20)
@@ -183,10 +145,6 @@ function StudentPortal({ currentUser, onLogout }) {
       } catch (error) {
         const timeStr = now.toTimeString().slice(0, 5)
         const dateStr = now.toLocaleDateString('en-GB')
-<<<<<<< HEAD
-
-=======
->>>>>>> my-project
         setHistory(prev => [
           { date: dateStr, course: 'ICT307', session: 'Lecture', status: 'Present', checkIn: timeStr },
           ...prev,
@@ -199,43 +157,13 @@ function StudentPortal({ currentUser, onLogout }) {
     }, 2500)
   }
 
-<<<<<<< HEAD
-  // ── Capture ─────────────────────────────────────────────────
-=======
   // ── Capture / Upload / Save ─────────────────────────────────
->>>>>>> my-project
   function handleCapture() {
     setCaptured(true)
     showToast('Face image captured! Enter your Student ID and click Save to enrol.', 'info')
     setTimeout(() => setCaptured(false), 3000)
   }
 
-<<<<<<< HEAD
-  // ── Upload ──────────────────────────────────────────────────
-  function handleUpload() {
-    showModal(
-      'Upload Face Image',
-      'File upload requires a connected backend. Please ensure the server is running and try again, or use the Capture button to take a photo directly.',
-      '📁'
-    )
-  }
-
-  // ── Save enrolment ──────────────────────────────────────────
-  function handleSave() {
-    if (!studentId.trim()) {
-      showToast('Please enter your Student ID before saving.', 'error')
-      return
-    }
-    if (!captured) {
-      showToast('Please capture or upload a face image first.', 'warning')
-      return
-    }
-    showModal(
-      'Face Enrolment Restricted',
-      'Only an Admin or Lecturer can create or update student access records. Please contact authorised staff.',
-      '🔒'
-    )
-=======
   function handleUpload() {
     showModal('Upload Face Image',
       'File upload requires a connected backend. Please ensure the server is running and try again, or use the Capture button to take a photo directly.',
@@ -248,41 +176,22 @@ function StudentPortal({ currentUser, onLogout }) {
     showModal('Face Enrolment Restricted',
       'Only an Admin or Lecturer can create or update student access records. Please contact authorised staff.',
       '🔒')
->>>>>>> my-project
   }
 
   // ── View History ─────────────────────────────────────────────
   function handleViewHistory() {
-<<<<<<< HEAD
-    setShowHistory(true)
-    setTimeout(() => {
-      if (historyRef.current) {
-        historyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-    }, 50)
-  }
-
-  // ── Toast colour map ────────────────────────────────────────
-=======
     setTimeout(() => {
       if (historyRef.current) historyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 50)
   }
 
   // ── Shared styles ───────────────────────────────────────────
->>>>>>> my-project
   const toastColours = {
     success: { background: '#d3f9d8', border: '#8ce99a', color: '#2f9e44' },
     info:    { background: '#dde4ff', border: '#748ffc', color: '#3b5bdb' },
     warning: { background: '#fff9db', border: '#ffe066', color: '#c18a00' },
     error:   { background: '#ffe3e3', border: '#ffa8a8', color: '#c92a2a' },
   }
-<<<<<<< HEAD
-
-  const overlayStyle = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
-=======
   const overlayStyle = {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
@@ -295,18 +204,10 @@ function StudentPortal({ currentUser, onLogout }) {
   function pctColor(v) {
     if (v === null || v === undefined) return '#a3aed0'
     return v >= 80 ? '#2f9e44' : v >= 60 ? '#f59e0b' : '#fa5252'
->>>>>>> my-project
   }
 
   return (
     <div className="dashboard-body">
-<<<<<<< HEAD
-      <Sidebar role="Student" navLinks={navLinks} onLogout={onLogout} />
-
-      <main className="main-content">
-
-        {/* ── Toast notification ── */}
-=======
       <Sidebar
         role="Student"
         navLinks={navLinks}
@@ -318,7 +219,6 @@ function StudentPortal({ currentUser, onLogout }) {
       <main className="main-content">
 
         {/* ── Toast ── */}
->>>>>>> my-project
         {toast && (
           <div style={{
             position: 'fixed', top: '20px', right: '24px', zIndex: 300,
@@ -332,20 +232,12 @@ function StudentPortal({ currentUser, onLogout }) {
           </div>
         )}
 
-<<<<<<< HEAD
-        {/* ── Info modal ── */}
-=======
         {/* ── Modal ── */}
->>>>>>> my-project
         {modal && (
           <div style={overlayStyle}>
             <div style={{
               background: 'white', padding: '30px', borderRadius: '14px',
-<<<<<<< HEAD
-              width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', textAlign: 'center'
-=======
               width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', textAlign: 'center',
->>>>>>> my-project
             }}>
               <div style={{ fontSize: '42px', marginBottom: '12px' }}>{modal.icon}</div>
               <h3 style={{ color: '#3b5bdb', fontSize: '17px', marginBottom: '12px' }}>{modal.title}</h3>
@@ -359,119 +251,6 @@ function StudentPortal({ currentUser, onLogout }) {
           </div>
         )}
 
-<<<<<<< HEAD
-        {/* Header banner */}
-        <header className="portal-header">
-          <h1>Student Portal</h1>
-          <p>Raspberry Pi • OpenCV • Secure Sync</p>
-        </header>
-
-        {/* Top two-column grid */}
-        <div className="student-grid">
-
-          {/* Check-in Kiosk */}
-          <div className="card">
-            <div className="card-header">
-              <h3>Check-in Kiosk</h3>
-              <button
-                className="btn-primary"
-                onClick={handleStartScan}
-                disabled={scanning}
-                style={{ opacity: scanning ? 0.7 : 1 }}
-              >
-                {scanning ? 'Scanning…' : 'Start Scan'}
-              </button>
-            </div>
-
-            {/* Camera preview — shows scanning animation when active */}
-            <div className="camera-preview" style={{
-              border: scanning ? '2px solid #4dabf7' : '1px solid #dde3f0',
-              transition: 'border 0.3s'
-            }}>
-              {scanning
-                ? <span style={{ color: '#4dabf7', fontWeight: 600, animation: 'pulse 1s infinite' }}>
-                    🎥 Scanning face…
-                  </span>
-                : scanStatus.includes('✓')
-                  ? <span style={{ color: '#40c057', fontWeight: 600 }}>✓ Face Captured</span>
-                  : 'Camera Preview'
-              }
-            </div>
-
-            <div className="enroll-section">
-              <h4>Enroll / Update Face</h4>
-              <div className="input-group">
-                <button
-                  className="btn-capture"
-                  onClick={handleCapture}
-                  style={{ background: captured ? 'linear-gradient(to right,#40c057,#2f9e44)' : undefined }}
-                >
-                  {captured ? '✓ Captured' : 'Capture'}
-                </button>
-                <button className="btn-upload" onClick={handleUpload}>Upload</button>
-                <input
-                  type="text"
-                  placeholder="Student ID"
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                />
-                <button className="btn-save" onClick={handleSave}>Save</button>
-              </div>
-            </div>
-          </div>
-
-          {/* Attendance Status */}
-          <div className="card">
-            <div className="card-header">
-              <h3>Attendance Status</h3>
-              <button className="btn-outline" onClick={handleViewHistory}>View History</button>
-            </div>
-            <div className="status-content">
-              <p className="status-main" style={{
-                color: scanStatus.includes('✓') ? '#40c057' :
-                       scanStatus.includes('Scanning') ? '#4dabf7' : '#2b3674'
-              }}>
-                {scanStatus}
-              </p>
-              <p className="status-sub">ICT307 • 28 Sept 2025 • 9:00 AM</p>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Attendance History — full width */}
-        <div className="card student-history-card" ref={historyRef}>
-          <div className="card-header">
-            <h3>Attendance History</h3>
-            <span style={{ fontSize: '12px', color: '#a3aed0' }}>{history.length} records</span>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Course</th>
-                <th>Session</th>
-                <th>Status</th>
-                <th>Check-in</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((row, i) => (
-                <tr key={i}>
-                  <td>{row.date}</td>
-                  <td>{row.course}</td>
-                  <td>{row.session}</td>
-                  <td className={
-                    row.status === 'Present' ? 'text-present' :
-                    row.status === 'Absent'  ? 'text-absent'  : 'text-late'
-                  }>{row.status}</td>
-                  <td>{row.checkIn}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-=======
         {/* ═══════════════════════════════════════════
             HOME VIEW
         ═══════════════════════════════════════════ */}
@@ -644,7 +423,6 @@ function StudentPortal({ currentUser, onLogout }) {
                             <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: '#4a5a8a' }}>
                               ({week.weekRange})
                             </td>
-
                             {DAY_KEYS.map(dk => {
                               const val = week.days[dk]
                               const isNC     = val === 'NC'
@@ -660,19 +438,10 @@ function StudentPortal({ currentUser, onLogout }) {
                                 </td>
                               )
                             })}
-
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>
-                              {week.studyHrs}
-                            </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#a3aed0' }}>
-                              {week.otherHrs}
-                            </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>
-                              {week.weeklyAttdHrs}
-                            </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#4a5a8a' }}>
-                              {week.weeklyClassHrs}
-                            </td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>{week.studyHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#a3aed0' }}>{week.otherHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>{week.weeklyAttdHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#4a5a8a' }}>{week.weeklyClassHrs}</td>
                             <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '700', color: pctColor(week.weeklyAttdPct) }}>
                               {week.weeklyAttdPct !== null ? week.weeklyAttdPct : '—'}
                             </td>
@@ -688,7 +457,6 @@ function StudentPortal({ currentUser, onLogout }) {
                     </table>
                   </div>
 
-                  {/* Legend */}
                   <div style={{
                     marginTop: '20px', padding: '14px 16px',
                     background: '#f8f9ff', borderRadius: '10px',
@@ -717,7 +485,6 @@ function StudentPortal({ currentUser, onLogout }) {
             </div>
           </>
         )}
->>>>>>> my-project
 
       </main>
     </div>

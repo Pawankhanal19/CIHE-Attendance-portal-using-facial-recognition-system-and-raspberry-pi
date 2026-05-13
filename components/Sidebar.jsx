@@ -1,30 +1,10 @@
 // components/Sidebar.jsx
-<<<<<<< HEAD
-// Home button scrolls the main content area back to the top.
-// onHome prop (optional) can be passed from a portal to reset its internal view.
-
-function Sidebar({ role, navLinks = [], onLogout, onHome }) {
-=======
 
 function Sidebar({ role, navLinks = [], onLogout, onHome, onNav, currentUser }) {
->>>>>>> my-project
   const [activeLabel, setActiveLabel] = React.useState('Home')
 
   function handleNavClick(link) {
     setActiveLabel(link.label)
-<<<<<<< HEAD
-
-    if (link.label === 'Home') {
-      // Scroll main content back to top
-      const main = document.querySelector('.main-content')
-      if (main) main.scrollTo({ top: 0, behavior: 'smooth' })
-
-      // If the parent portal has an onHome handler (e.g. to reset a sub-view), call it
-      if (typeof onHome === 'function') onHome()
-    }
-  }
-
-=======
     if (link.label === 'Home') {
       const main = document.querySelector('.main-content')
       if (main) main.scrollTo({ top: 0, behavior: 'smooth' })
@@ -47,7 +27,6 @@ function Sidebar({ role, navLinks = [], onLogout, onHome, onNav, currentUser }) 
     role === 'Lecturer' ? (currentUser?.email || 'Teaching Staff') :
     currentUser?.studentId ? `ID: ${currentUser.studentId}` : 'Student'
 
->>>>>>> my-project
   return (
     <aside className="sidebar">
       <div className="logo">
@@ -55,10 +34,6 @@ function Sidebar({ role, navLinks = [], onLogout, onHome, onNav, currentUser }) 
         <span>Real-time Facial Recognition</span>
       </div>
 
-<<<<<<< HEAD
-      <div className="user-status">
-        Logged in as <strong>{role}</strong>
-=======
       <div className="sidebar-profile">
         <div className="sidebar-avatar" style={{ background: roleStyle.avatar }}>
           {initials}
@@ -68,7 +43,6 @@ function Sidebar({ role, navLinks = [], onLogout, onHome, onNav, currentUser }) 
           <p className="sidebar-user-role" style={{ color: roleStyle.role }}>{role}</p>
           <p className="sidebar-user-detail">{subtitle}</p>
         </div>
->>>>>>> my-project
       </div>
 
       <nav>
@@ -88,8 +62,4 @@ function Sidebar({ role, navLinks = [], onLogout, onHome, onNav, currentUser }) 
       </nav>
     </aside>
   )
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> my-project

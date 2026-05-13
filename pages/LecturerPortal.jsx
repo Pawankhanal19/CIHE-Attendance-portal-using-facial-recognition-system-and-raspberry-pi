@@ -1,64 +1,24 @@
 // pages/LecturerPortal.jsx
 
-<<<<<<< HEAD
-const initialAttendance = [
-  { id: 1, name: 'Student A', status: 'Present',        time: '09:02', recognized: true  },
-  { id: 2, name: 'Student C', status: 'Not Recognized', time: '—',     recognized: false },
-]
-
-const initialAlerts = [
-  { id: 1, message: 'Unrecognized face detected at ', highlight: '09:07' },
-  { id: 2, message: 'Network restored at ',           highlight: '09:12' },
-]
-
-=======
->>>>>>> my-project
 function LecturerPortal({ currentUser, onLogout }) {
   const [courseCode,    setCourseCode]    = React.useState('')
   const [roomSession,   setRoomSession]   = React.useState('')
   const [sessionActive, setSessionActive] = React.useState(false)
   const [notes,         setNotes]         = React.useState('')
   const [notesSaved,    setNotesSaved]    = React.useState(false)
-<<<<<<< HEAD
-  const [pendingSync,   setPendingSync]   = React.useState(2)
-  const [synced,        setSynced]        = React.useState(33)
-  const [attendance,    setAttendance]    = React.useState(initialAttendance)
-=======
   const [pendingSync,   setPendingSync]   = React.useState(0)
   const [synced,        setSynced]        = React.useState(0)
   const [attendance,    setAttendance]    = React.useState([])
->>>>>>> my-project
   const [toast,         setToast]         = React.useState(null)  // { message, type: 'success'|'info'|'warning'|'error' }
   const [modal,         setModal]         = React.useState(null)  // { title, body, icon }
   const [overrideId,    setOverrideId]    = React.useState(null)  // student id being overridden
   const [overrideVal,   setOverrideVal]   = React.useState('Present')
   const [newStudent,    setNewStudent]    = React.useState({ name: '', username: '', password: '', email: '', studentId: '' })
-<<<<<<< HEAD
-
-  const navLinks = [{ label: 'Home', href: '#' }]
-
-  React.useEffect(() => {
-    let cancelled = false
-
-    function attendanceRowFromLog(log) {
-      const timestamp = new Date(log.time || log.created_at || Date.now())
-      return {
-        id: log.id,
-        name: log.name,
-        status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Not Recognized'),
-        time: timestamp.toTimeString().slice(0, 5),
-        recognized: log.status === 'recognised',
-      }
-    }
-
-    async function loadAttendance() {
-      try {
-        const logs = await AttendanceAPI.fetchRecognitionLogs(20)
-=======
   const [savedNotes,    setSavedNotes]    = React.useState([])
   const [savingNotes,   setSavingNotes]   = React.useState(false)
   const [activeSession, setActiveSession] = React.useState(null)  // ClassSession object from DB
   const [alerts,        setAlerts]        = React.useState([])
+  const [piStatus,      setPiStatus]      = React.useState(null)  // { online, running, cpu_percent, temperature }
 
   const navLinks = [{ label: 'Home', href: '#' }]
 
@@ -79,19 +39,17 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
   }
 
+  // ── Initial data load + socket ──────────────────────────────
   React.useEffect(() => {
     let cancelled = false
 
     async function loadAttendance() {
       try {
         const logs = await AttendanceAPI.fetchRecognitionLogs(50)
->>>>>>> my-project
         if (!cancelled && logs.length > 0) {
           setAttendance(logs.map(attendanceRowFromLog))
           setSynced(logs.length)
           setPendingSync(0)
-<<<<<<< HEAD
-=======
           const unrecognised = logs.filter(l => l.status === 'unrecognised' || l.attendance_status === 'Denied')
           setAlerts(unrecognised.map(l => ({
             id: l.id,
@@ -99,7 +57,6 @@ function LecturerPortal({ currentUser, onLogout }) {
             highlight: new Date(l.time || l.created_at).toTimeString().slice(0, 5),
             device: l.device_id,
           })))
->>>>>>> my-project
         }
       } catch (error) {
         console.warn('Backend unavailable, using demo lecturer data.', error)
@@ -107,19 +64,11 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
 
     loadAttendance()
-<<<<<<< HEAD
-=======
     const interval = setInterval(loadAttendance, 30000)
->>>>>>> my-project
     const socket = AttendanceAPI.connectSocket()
 
     if (socket) {
       socket.on('attendance_updated', (log) => {
-<<<<<<< HEAD
-        setAttendance(prev => [attendanceRowFromLog(log), ...prev].slice(0, 20))
-        setSynced(s => s + 1)
-        showToast(`${log.name} attendance updated from Raspberry Pi.`, 'success')
-=======
         const row = attendanceRowFromLog(log)
         setAttendance(prev => [row, ...prev.filter(s => s.id !== row.id)].slice(0, 50))
         setSynced(s => s + 1)
@@ -132,18 +81,47 @@ function LecturerPortal({ currentUser, onLogout }) {
             device: log.device_id,
           }, ...prev].slice(0, 10))
         }
->>>>>>> my-project
       })
     }
 
     return () => {
       cancelled = true
-<<<<<<< HEAD
-=======
       clearInterval(interval)
->>>>>>> my-project
       if (socket) socket.disconnect()
     }
+  }, [])
+
+  // ── Pi status polling (every 5 s) ───────────────────────────
+  React.useEffect(() => {
+    async function pollPiStatus() {
+      try {
+        const data = await AttendanceAPI.fetchPiStatus()
+        setPiStatus(data.pi)
+        if (data.activeSession && !activeSession) {
+          setActiveSession(data.activeSession)
+          setSessionActive(true)
+        }
+      } catch (error) {
+        setPiStatus({ online: false })
+      }
+    }
+
+    pollPiStatus()
+    const piInterval = setInterval(pollPiStatus, 5000)
+    return () => clearInterval(piInterval)
+  }, [])
+
+  // ── Session notes load ──────────────────────────────────────
+  React.useEffect(() => {
+    async function loadNotes() {
+      try {
+        const data = await AttendanceAPI.fetchSessionNotes()
+        setSavedNotes(data)
+      } catch (error) {
+        console.warn('Could not load session notes:', error)
+      }
+    }
+    loadNotes()
   }, [])
 
   // ── Toast helper (auto-dismisses after 3s) ──────────────────
@@ -158,28 +136,22 @@ function LecturerPortal({ currentUser, onLogout }) {
   }
 
   // ── Session controls ────────────────────────────────────────
-<<<<<<< HEAD
-  function handleStartSession() {
-=======
   async function handleStartSession() {
->>>>>>> my-project
     if (!courseCode.trim()) {
       showToast('Please enter a course code before starting a session.', 'error')
       return
     }
-<<<<<<< HEAD
-    setSessionActive(true)
-    showToast(`Session started for ${courseCode}${roomSession ? ' — ' + roomSession : ''}.`, 'success')
-=======
     try {
       const session = await AttendanceAPI.startSession(courseCode, roomSession)
       setActiveSession(session)
       setSessionActive(true)
-      showToast(`Session started for ${courseCode}${roomSession ? ' — ' + roomSession : ''} and saved to database.`, 'success')
+      const piMsg = session.piStatus?.error
+        ? ` (Pi: ${session.piStatus.error})`
+        : session.piStatus?.status === 'started' ? ' — Pi camera started.' : ''
+      showToast(`Session started for ${courseCode}${roomSession ? ' — ' + roomSession : ''}${piMsg}`, 'success')
     } catch (error) {
       showToast(error.message || 'Could not save session to backend.', 'error')
     }
->>>>>>> my-project
   }
 
   async function handleAddStudent() {
@@ -197,34 +169,11 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
   }
 
-<<<<<<< HEAD
-  function handleStopSession() {
-=======
   async function handleStopSession() {
->>>>>>> my-project
     if (!sessionActive) {
       showToast('No active session to stop.', 'warning')
       return
     }
-<<<<<<< HEAD
-    setSessionActive(false)
-    showToast(`Session for ${courseCode} has been stopped. Attendance saved.`, 'info')
-  }
-
-  function handleExportCSV() {
-    if (!sessionActive && !courseCode.trim()) {
-      showModal(
-        'Export CSV',
-        'No session data available to export. Please start a session first.',
-        '📁'
-      )
-      return
-    }
-    // Build a simple CSV from current attendance
-    const rows = [['Student', 'Status', 'Time']]
-    attendance.forEach(s => rows.push([s.name, s.status, s.time]))
-    const csv = rows.map(r => r.join(',')).join('\n')
-=======
     try {
       if (activeSession?._id) {
         await AttendanceAPI.stopSession(activeSession._id)
@@ -257,41 +206,10 @@ function LecturerPortal({ currentUser, onLogout }) {
     const csvRows = [['Student', 'Status', 'Time', 'Course', 'Room']]
     rows.forEach(s => csvRows.push([s.name, s.status, s.time, courseCode || 'ICT307', roomSession || 'Lecture']))
     const csv  = csvRows.map(r => r.join(',')).join('\n')
->>>>>>> my-project
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-<<<<<<< HEAD
-    a.download = `attendance_${courseCode || 'session'}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    showToast('CSV exported successfully!', 'success')
-  }
-
-  // ── Sync controls ───────────────────────────────────────────
-  function handleSyncNow() {
-    if (pendingSync === 0) {
-      showToast('Everything is already synced — no pending records.', 'info')
-      return
-    }
-    setSynced(s => s + pendingSync)
-    setPendingSync(0)
-    showToast(`${pendingSync} record(s) synced to the cloud successfully.`, 'success')
-  }
-
-  // ── Attendance row actions ──────────────────────────────────
-  function handleMarkPresent(id) {
-    const now = new Date().toTimeString().slice(0, 5)
-    setAttendance(prev => prev.map(s =>
-      s.id === id
-        ? { ...s, status: 'Present', time: now, recognized: true }
-        : s
-    ))
-    const student = attendance.find(s => s.id === id)
-    showToast(`${student.name} has been manually marked as Present.`, 'success')
-    setPendingSync(p => p + 1)
-=======
     a.download = `attendance_${courseCode || 'session'}_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
@@ -329,7 +247,6 @@ function LecturerPortal({ currentUser, onLogout }) {
     } catch (error) {
       setPendingSync(p => p + 1)
     }
->>>>>>> my-project
   }
 
   function handleRetry(id) {
@@ -349,32 +266,14 @@ function LecturerPortal({ currentUser, onLogout }) {
     setOverrideVal('Present')
   }
 
-<<<<<<< HEAD
-  function handleOverrideSave() {
-    const now = new Date().toTimeString().slice(0, 5)
-=======
   async function handleOverrideSave() {
     const now = new Date().toTimeString().slice(0, 5)
     const student = attendance.find(s => s.id === overrideId)
->>>>>>> my-project
     setAttendance(prev => prev.map(s =>
       s.id === overrideId
         ? { ...s, status: overrideVal, time: overrideVal === 'Absent' ? '—' : now }
         : s
     ))
-<<<<<<< HEAD
-    const student = attendance.find(s => s.id === overrideId)
-    showToast(`${student.name}'s status overridden to "${overrideVal}".`, 'info')
-    setOverrideId(null)
-    setPendingSync(p => p + 1)
-  }
-
-  function handleDetails(id) {
-    const student = attendance.find(s => s.id === id)
-    showModal(
-      `Details — ${student.name}`,
-      `Status: ${student.status}\nCheck-in Time: ${student.time}\nCourse: ${courseCode || 'N/A'}\nRoom: ${roomSession || 'N/A'}\n\nFull attendance history will be available once the backend is connected.`,
-=======
     showToast(`${student.name}'s status overridden to "${overrideVal}".`, 'info')
     setOverrideId(null)
     try {
@@ -389,44 +288,16 @@ function LecturerPortal({ currentUser, onLogout }) {
     showModal(
       `Details — ${s.name}`,
       `Student ID: ${s.personId}\nStatus: ${s.status}\nCheck-in: ${s.date} at ${s.time}\nCourse: ${s.course}\nDevice: ${s.deviceId}\nConfidence: ${s.confidence ? s.confidence + '%' : '—'}`,
->>>>>>> my-project
       '👤'
     )
   }
 
   // ── Session notes ───────────────────────────────────────────
-<<<<<<< HEAD
-  function handleSaveNotes() {
-=======
-  React.useEffect(() => {
-    async function loadNotes() {
-      try {
-        const data = await AttendanceAPI.fetchSessionNotes()
-        setSavedNotes(data)
-      } catch (error) {
-        console.warn('Could not load session notes:', error)
-      }
-    }
-    loadNotes()
-  }, [])
-
   async function handleSaveNotes() {
->>>>>>> my-project
     if (!notes.trim()) {
       showToast('Nothing to save — notes are empty.', 'warning')
       return
     }
-<<<<<<< HEAD
-    setNotesSaved(true)
-    showToast('Session notes saved successfully!', 'success')
-    setTimeout(() => setNotesSaved(false), 3000)
-  }
-
-  // ── Derived counts ──────────────────────────────────────────
-  const totalStudents = 40
-  const presentCount  = attendance.filter(s => s.status === 'Present').length + 35
-  const absentCount   = totalStudents - presentCount
-=======
     setSavingNotes(true)
     try {
       const saved = await AttendanceAPI.saveSessionNote(notes.trim(), courseCode, roomSession)
@@ -446,7 +317,14 @@ function LecturerPortal({ currentUser, onLogout }) {
   const presentCount = attendance.filter(s => s.status === 'Present').length
   const absentCount  = attendance.filter(s => s.status === 'Absent').length
   const totalStudents = attendance.length
->>>>>>> my-project
+
+  // ── Pi status label ─────────────────────────────────────────
+  function piStatusLabel() {
+    if (!piStatus) return '⟳ Checking Pi…'
+    if (piStatus.online === false) return '🔴 Pi offline'
+    const base = `🟢 Pi online · CPU ${piStatus.cpu_percent ?? '—'}% · ${piStatus.temperature ?? '—'}°C`
+    return piStatus.running ? `${base} · 📹 Scanning` : `${base} · 💤 Idle`
+  }
 
   // ── Toast colours ───────────────────────────────────────────
   const toastColours = {
@@ -467,11 +345,7 @@ function LecturerPortal({ currentUser, onLogout }) {
 
   return (
     <div className="dashboard-body">
-<<<<<<< HEAD
-      <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout} />
-=======
       <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
->>>>>>> my-project
 
       <main className="main-content">
 
@@ -626,6 +500,17 @@ function LecturerPortal({ currentUser, onLogout }) {
               <button className="btn-sync-now" onClick={handleSyncNow}>Sync Now</button>
             </div>
           </div>
+
+          {/* Pi status bar */}
+          <div style={{
+            marginTop: '12px', padding: '8px 14px', borderRadius: '8px',
+            background: piStatus?.online === false ? '#fff5f5' : '#f3f9ff',
+            border: `1px solid ${piStatus?.online === false ? '#ffa8a8' : '#bcd0f7'}`,
+            fontSize: '12px', fontWeight: 600,
+            color: piStatus?.online === false ? '#c92a2a' : '#3b5bdb',
+          }}>
+            {piStatusLabel()}
+          </div>
         </div>
 
         {/* Real-time Attendance */}
@@ -640,24 +525,15 @@ function LecturerPortal({ currentUser, onLogout }) {
             <thead>
               <tr>
                 <th>Student</th>
-<<<<<<< HEAD
-                <th>Status</th>
-=======
                 <th>Course</th>
                 <th>Student ID</th>
                 <th>Status</th>
                 <th>Date</th>
->>>>>>> my-project
                 <th>Time</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-<<<<<<< HEAD
-              {attendance.map(s => (
-                <tr key={s.id}>
-                  <td>{s.name}</td>
-=======
               {attendance.length === 0 && (
                 <tr><td colSpan="7" style={{ textAlign: 'center', color: '#a3aed0', padding: '20px' }}>No records yet — waiting for Pi scans…</td></tr>
               )}
@@ -666,7 +542,6 @@ function LecturerPortal({ currentUser, onLogout }) {
                   <td>{s.name}</td>
                   <td style={{ color: '#4a5a8a', fontSize: '12px' }}>{s.course}</td>
                   <td style={{ fontSize: '12px', color: '#a3aed0', fontFamily: 'monospace' }}>{s.personId}</td>
->>>>>>> my-project
                   <td className={
                     s.status === 'Present'  ? 'text-present' :
                     s.status === 'Absent'   ? 'text-absent'  :
@@ -675,10 +550,7 @@ function LecturerPortal({ currentUser, onLogout }) {
                   }>
                     {s.status}
                   </td>
-<<<<<<< HEAD
-=======
                   <td style={{ fontSize: '12px', color: '#a3aed0' }}>{s.date || '—'}</td>
->>>>>>> my-project
                   <td>{s.time}</td>
                   <td>
                     {s.recognized ? (
@@ -710,11 +582,6 @@ function LecturerPortal({ currentUser, onLogout }) {
                 value={notes}
                 onChange={e => { setNotes(e.target.value); setNotesSaved(false) }}
               />
-<<<<<<< HEAD
-              <button className="btn-secondary-blue" onClick={handleSaveNotes}>
-                {notesSaved ? '✓ Notes Saved!' : 'Save Notes'}
-              </button>
-=======
               <button
                 className="btn-secondary-blue"
                 onClick={handleSaveNotes}
@@ -744,25 +611,18 @@ function LecturerPortal({ currentUser, onLogout }) {
                   ))}
                 </div>
               )}
->>>>>>> my-project
             </div>
 
             <div className="card" style={{ boxShadow: 'none', border: '1px solid #e8edf5' }}>
               <div className="card-header">
                 <h3>Alerts</h3>
               </div>
-<<<<<<< HEAD
-              {initialAlerts.map((a, i) => (
-                <p key={i} className="alert-item">
-                  {a.message}<span>{a.highlight}</span>
-=======
               {alerts.length === 0 ? (
                 <p style={{ color: '#a3aed0', fontSize: '13px', padding: '8px 0' }}>No unrecognised faces — all clear.</p>
               ) : alerts.map((a, i) => (
                 <p key={a.id || i} className="alert-item">
                   {a.message}<span>{a.highlight}</span>
                   {a.device && <span style={{ color: '#a3aed0', fontSize: '11px', marginLeft: '6px' }}>({a.device})</span>}
->>>>>>> my-project
                 </p>
               ))}
             </div>
