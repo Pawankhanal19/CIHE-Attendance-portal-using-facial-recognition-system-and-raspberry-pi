@@ -111,3 +111,5 @@ Backend stores attendance log in MongoDB
 Backend emits Socket.IO event
 Frontend dashboard updates live
 ```
+
+Hi this is awesome project, that is created by the group no.1 and is quite a achievement to have
