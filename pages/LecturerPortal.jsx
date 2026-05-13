@@ -1,24 +1,14 @@
 // pages/LecturerPortal.jsx
 
-const initialAttendance = [
-  { id: 1, name: 'Student A', status: 'Present',        time: '09:02', recognized: true  },
-  { id: 2, name: 'Student C', status: 'Not Recognized', time: '—',     recognized: false },
-]
-
-const initialAlerts = [
-  { id: 1, message: 'Unrecognized face detected at ', highlight: '09:07' },
-  { id: 2, message: 'Network restored at ',           highlight: '09:12' },
-]
-
 function LecturerPortal({ currentUser, onLogout }) {
   const [courseCode,    setCourseCode]    = React.useState('')
   const [roomSession,   setRoomSession]   = React.useState('')
   const [sessionActive, setSessionActive] = React.useState(false)
   const [notes,         setNotes]         = React.useState('')
   const [notesSaved,    setNotesSaved]    = React.useState(false)
-  const [pendingSync,   setPendingSync]   = React.useState(2)
-  const [synced,        setSynced]        = React.useState(33)
-  const [attendance,    setAttendance]    = React.useState(initialAttendance)
+  const [pendingSync,   setPendingSync]   = React.useState(0)
+  const [synced,        setSynced]        = React.useState(0)
+  const [attendance,    setAttendance]    = React.useState([])
   const [toast,         setToast]         = React.useState(null)  // { message, type: 'success'|'info'|'warning'|'error' }
   const [modal,         setModal]         = React.useState(null)  // { title, body, icon }
   const [overrideId,    setOverrideId]    = React.useState(null)  // student id being overridden
@@ -27,31 +17,44 @@ function LecturerPortal({ currentUser, onLogout }) {
   const [savedNotes,    setSavedNotes]    = React.useState([])
   const [savingNotes,   setSavingNotes]   = React.useState(false)
   const [activeSession, setActiveSession] = React.useState(null)  // ClassSession object from DB
+  const [alerts,        setAlerts]        = React.useState([])
 
   const navLinks = [{ label: 'Home', href: '#' }]
+
+  function attendanceRowFromLog(log) {
+    const timestamp = new Date(log.time || log.created_at || Date.now())
+    return {
+      id: log.id,
+      name: log.name,
+      status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Not Recognized'),
+      time: timestamp.toTimeString().slice(0, 5),
+      date: timestamp.toLocaleDateString('en-GB'),
+      rawTimestamp: timestamp,
+      recognized: log.status === 'recognised',
+      course: log.course_code || 'ICT307',
+      personId: log.person_id || '—',
+      confidence: log.confidence ? Math.round(log.confidence) : null,
+      deviceId: log.device_id || '—',
+    }
+  }
 
   React.useEffect(() => {
     let cancelled = false
 
-    function attendanceRowFromLog(log) {
-      const timestamp = new Date(log.time || log.created_at || Date.now())
-      return {
-        id: log.id,
-        name: log.name,
-        status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Not Recognized'),
-        time: timestamp.toTimeString().slice(0, 5),
-        rawTimestamp: timestamp,
-        recognized: log.status === 'recognised',
-      }
-    }
-
     async function loadAttendance() {
       try {
-        const logs = await AttendanceAPI.fetchRecognitionLogs(20)
+        const logs = await AttendanceAPI.fetchRecognitionLogs(50)
         if (!cancelled && logs.length > 0) {
           setAttendance(logs.map(attendanceRowFromLog))
           setSynced(logs.length)
           setPendingSync(0)
+          const unrecognised = logs.filter(l => l.status === 'unrecognised' || l.attendance_status === 'Denied')
+          setAlerts(unrecognised.map(l => ({
+            id: l.id,
+            message: `Unrecognised face detected at `,
+            highlight: new Date(l.time || l.created_at).toTimeString().slice(0, 5),
+            device: l.device_id,
+          })))
         }
       } catch (error) {
         console.warn('Backend unavailable, using demo lecturer data.', error)
@@ -59,18 +62,29 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
 
     loadAttendance()
+    const interval = setInterval(loadAttendance, 30000)
     const socket = AttendanceAPI.connectSocket()
 
     if (socket) {
       socket.on('attendance_updated', (log) => {
-        setAttendance(prev => [attendanceRowFromLog(log), ...prev].slice(0, 20))
+        const row = attendanceRowFromLog(log)
+        setAttendance(prev => [row, ...prev.filter(s => s.id !== row.id)].slice(0, 50))
         setSynced(s => s + 1)
         showToast(`${log.name} attendance updated from Raspberry Pi.`, 'success')
+        if (log.status === 'unrecognised' || log.attendance_status === 'Denied') {
+          setAlerts(prev => [{
+            id: log.id,
+            message: `Unrecognised face detected at `,
+            highlight: new Date(log.time || Date.now()).toTimeString().slice(0, 5),
+            device: log.device_id,
+          }, ...prev].slice(0, 10))
+        }
       })
     }
 
     return () => {
       cancelled = true
+      clearInterval(interval)
       if (socket) socket.disconnect()
     }
   }, [])
@@ -168,19 +182,9 @@ function LecturerPortal({ currentUser, onLogout }) {
   async function handleSyncNow() {
     showToast('Syncing with database…', 'info')
     try {
-      const logs = await AttendanceAPI.fetchRecognitionLogs(20)
+      const logs = await AttendanceAPI.fetchRecognitionLogs(50)
       if (logs.length > 0) {
-        setAttendance(logs.map(log => {
-          const timestamp = new Date(log.time || log.created_at || Date.now())
-          return {
-            id: log.id,
-            name: log.name,
-            status: log.attendance_status || (log.status === 'recognised' ? 'Present' : 'Not Recognized'),
-            time: timestamp.toTimeString().slice(0, 5),
-            rawTimestamp: timestamp,
-            recognized: log.status === 'recognised',
-          }
-        }))
+        setAttendance(logs.map(attendanceRowFromLog))
         setSynced(logs.length)
         setPendingSync(0)
         showToast(`Synced — ${logs.length} record(s) loaded from database.`, 'success')
@@ -242,10 +246,10 @@ function LecturerPortal({ currentUser, onLogout }) {
   }
 
   function handleDetails(id) {
-    const student = attendance.find(s => s.id === id)
+    const s = attendance.find(s => s.id === id)
     showModal(
-      `Details — ${student.name}`,
-      `Status: ${student.status}\nCheck-in Time: ${student.time}\nCourse: ${courseCode || 'N/A'}\nRoom: ${roomSession || 'N/A'}\n\nFull attendance history will be available once the backend is connected.`,
+      `Details — ${s.name}`,
+      `Student ID: ${s.personId}\nStatus: ${s.status}\nCheck-in: ${s.date} at ${s.time}\nCourse: ${s.course}\nDevice: ${s.deviceId}\nConfidence: ${s.confidence ? s.confidence + '%' : '—'}`,
       '👤'
     )
   }
@@ -284,9 +288,9 @@ function LecturerPortal({ currentUser, onLogout }) {
   }
 
   // ── Derived counts ──────────────────────────────────────────
-  const totalStudents = 40
-  const presentCount  = attendance.filter(s => s.status === 'Present').length + 35
-  const absentCount   = totalStudents - presentCount
+  const presentCount = attendance.filter(s => s.status === 'Present').length
+  const absentCount  = attendance.filter(s => s.status === 'Absent').length
+  const totalStudents = attendance.length
 
   // ── Toast colours ───────────────────────────────────────────
   const toastColours = {
@@ -307,7 +311,7 @@ function LecturerPortal({ currentUser, onLogout }) {
 
   return (
     <div className="dashboard-body">
-      <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout} />
+      <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
 
       <main className="main-content">
 
@@ -476,15 +480,23 @@ function LecturerPortal({ currentUser, onLogout }) {
             <thead>
               <tr>
                 <th>Student</th>
+                <th>Course</th>
+                <th>Student ID</th>
                 <th>Status</th>
+                <th>Date</th>
                 <th>Time</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
+              {attendance.length === 0 && (
+                <tr><td colSpan="7" style={{ textAlign: 'center', color: '#a3aed0', padding: '20px' }}>No records yet — waiting for Pi scans…</td></tr>
+              )}
               {attendance.map(s => (
                 <tr key={s.id}>
                   <td>{s.name}</td>
+                  <td style={{ color: '#4a5a8a', fontSize: '12px' }}>{s.course}</td>
+                  <td style={{ fontSize: '12px', color: '#a3aed0', fontFamily: 'monospace' }}>{s.personId}</td>
                   <td className={
                     s.status === 'Present'  ? 'text-present' :
                     s.status === 'Absent'   ? 'text-absent'  :
@@ -493,6 +505,7 @@ function LecturerPortal({ currentUser, onLogout }) {
                   }>
                     {s.status}
                   </td>
+                  <td style={{ fontSize: '12px', color: '#a3aed0' }}>{s.date || '—'}</td>
                   <td>{s.time}</td>
                   <td>
                     {s.recognized ? (
@@ -559,9 +572,12 @@ function LecturerPortal({ currentUser, onLogout }) {
               <div className="card-header">
                 <h3>Alerts</h3>
               </div>
-              {initialAlerts.map((a, i) => (
-                <p key={i} className="alert-item">
+              {alerts.length === 0 ? (
+                <p style={{ color: '#a3aed0', fontSize: '13px', padding: '8px 0' }}>No unrecognised faces — all clear.</p>
+              ) : alerts.map((a, i) => (
+                <p key={a.id || i} className="alert-item">
                   {a.message}<span>{a.highlight}</span>
+                  {a.device && <span style={{ color: '#a3aed0', fontSize: '11px', marginLeft: '6px' }}>({a.device})</span>}
                 </p>
               ))}
             </div>

@@ -5,7 +5,7 @@ const initialUsers = [
   { id: 2, name: 'Dr. Sarah Johnson', role: 'Lecturer', email: 'sj@example.com' },
 ]
 
-function AdminPortal({ onLogout }) {
+function AdminPortal({ currentUser, onLogout }) {
   const [users,        setUsers]        = React.useState(initialUsers)
   const [search,       setSearch]       = React.useState('')
   const [roleFilter,   setRoleFilter]   = React.useState('All')
@@ -188,7 +188,7 @@ function AdminPortal({ onLogout }) {
 
   return (
     <div className="dashboard-body">
-      <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} />
+      <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
 
       <main className="main-content">
 

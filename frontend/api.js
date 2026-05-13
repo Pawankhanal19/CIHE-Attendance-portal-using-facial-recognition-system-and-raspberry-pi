@@ -90,6 +90,10 @@ const AttendanceAPI = {
     return this.request('/api/health')
   },
 
+  fetchWeeklyAttendance(personId) {
+    return this.request(`/api/weekly-attendance?person_id=${encodeURIComponent(personId)}`)
+  },
+
   updateAttendanceLog(id, data) {
     return this.request(`/api/recognition-logs/${id}`, {
       method: 'PUT',

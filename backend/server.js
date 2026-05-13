@@ -475,6 +475,109 @@ app.get('/api/session-notes', requireAuth, requireRoles(['Admin', 'Lecturer']), 
   res.json(notes)
 })
 
+app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
+  const personId = req.query.person_id
+  if (!personId) return res.status(400).json({ message: 'person_id query parameter is required.' })
+
+  const HOURS_PER_SESSION = 3
+
+  const [myLogs, allLogs] = await Promise.all([
+    AttendanceLog.find({ personId }).sort({ timestamp: 1 }).lean(),
+    AttendanceLog.find({}).select('timestamp').lean(),
+  ])
+
+  if (myLogs.length === 0) return res.json([])
+
+  // Any day where ANY student was recognised counts as a class day
+  const classDaySet = new Set(allLogs.map(l => new Date(l.timestamp).toISOString().slice(0, 10)))
+
+  // Map of dates this student attended: YYYY-MM-DD → hours attended
+  const myDayMap = {}
+  for (const log of myLogs) {
+    const dk = new Date(log.timestamp).toISOString().slice(0, 10)
+    if (log.attendanceStatus === 'Present' || log.attendanceStatus === 'Late') {
+      myDayMap[dk] = HOURS_PER_SESSION  // one class per day — multiple scans don't stack
+    } else if (!myDayMap[dk]) {
+      myDayMap[dk] = 0
+    }
+  }
+
+  function getMonday(date) {
+    const d = new Date(date)
+    const day = d.getDay()
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+
+  function fmtDate(d) {
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+  }
+
+  const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  const weeks = []
+  let cumAttd = 0, cumClass = 0
+
+  let cursor = getMonday(new Date(myLogs[0].timestamp))
+  const todayMonday = getMonday(new Date())
+
+  while (cursor <= todayMonday) {
+    const wStart = new Date(cursor)
+    const wEnd   = new Date(cursor)
+    wEnd.setDate(wEnd.getDate() + 6)
+
+    const days = {}
+    let weeklyAttd = 0, weeklyClass = 0
+
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(wStart)
+      day.setDate(day.getDate() + i)
+      const dk = day.toISOString().slice(0, 10)
+
+      if (classDaySet.has(dk)) {
+        weeklyClass += HOURS_PER_SESSION
+        days[DAY_KEYS[i]] = myDayMap[dk] ?? 0
+        weeklyAttd += myDayMap[dk] ?? 0
+      } else {
+        days[DAY_KEYS[i]] = 'NC'
+      }
+    }
+
+    cumAttd  += weeklyAttd
+    cumClass += weeklyClass
+
+    weeks.push({
+      term: 1,
+      weekRange: `${fmtDate(wStart)} - ${fmtDate(wEnd)}`,
+      days,
+      studyHrs:        weeklyAttd,
+      otherHrs:        0,
+      weeklyAttdHrs:   weeklyAttd,
+      weeklyClassHrs:  weeklyClass,
+      weeklyAttdPct:   weeklyClass > 0 ? Math.round(weeklyAttd / weeklyClass * 10000) / 100 : null,
+      semesterCurrAttd: cumClass > 0  ? Math.round(cumAttd  / cumClass  * 10000) / 100 : null,
+      _cumAttd:  cumAttd,
+      _cumClass: cumClass,
+    })
+
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  // Semester Proj. Attd. — if student attends 100% of remaining weeks, max possible %
+  const avgWeeklyClass = weeks.reduce((s, w) => s + w.weeklyClassHrs, 0) / weeks.length || HOURS_PER_SESSION * 3
+  for (let i = 0; i < weeks.length; i++) {
+    const futureClass    = (weeks.length - 1 - i) * avgWeeklyClass
+    const totalPossible  = weeks[i]._cumClass + futureClass
+    weeks[i].semesterProjAttd = totalPossible > 0
+      ? Math.round((weeks[i]._cumAttd + futureClass) / totalPossible * 10000) / 100
+      : null
+    delete weeks[i]._cumAttd
+    delete weeks[i]._cumClass
+  }
+
+  res.json(weeks)
+})
+
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(500).json({ message: 'Server error.', detail: err.message })
