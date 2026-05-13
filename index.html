@@ -3,8 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
   <title>CIHE Attendance App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Apply saved theme + accent before React renders to prevent flash -->
+  <script>(function(){var t=localStorage.getItem('ap-theme')||'light';if(t==='system')t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t);var a=localStorage.getItem('ap-accent');if(a)document.documentElement.style.setProperty('--primary',a);})()</script>
 
   <!-- React & ReactDOM via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -23,12 +31,13 @@
     Load each component file in order (dependencies first).
     type="text/babel" tells Babel to compile the JSX.
   -->
-  <script src="frontend/api.js"></script>
-  <script type="text/babel" src="components/Sidebar.jsx"></script>
-  <script type="text/babel" src="pages/Login.jsx"></script>
-  <script type="text/babel" src="pages/StudentPortal.jsx"></script>
-  <script type="text/babel" src="pages/LecturerPortal.jsx"></script>
-  <script type="text/babel" src="pages/AdminPortal.jsx"></script>
-  <script type="text/babel" src="App.jsx"></script>
+  <script src="frontend/api.js?v=7"></script>
+  <script type="text/babel" src="components/Sidebar.jsx?v=7"></script>
+  <script type="text/babel" src="components/SettingsPanel.jsx?v=7"></script>
+  <script type="text/babel" src="pages/Login.jsx?v=7"></script>
+  <script type="text/babel" src="pages/StudentPortal.jsx?v=7"></script>
+  <script type="text/babel" src="pages/LecturerPortal.jsx?v=7"></script>
+  <script type="text/babel" src="pages/AdminPortal.jsx?v=7"></script>
+  <script type="text/babel" src="App.jsx?v=7"></script>
 </body>
 </html>

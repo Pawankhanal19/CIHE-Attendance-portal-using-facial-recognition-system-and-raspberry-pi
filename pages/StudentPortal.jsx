@@ -20,18 +20,15 @@ function historyRowFromLog(log) {
 }
 
 function StudentPortal({ currentUser, onLogout }) {
-  const [scanStatus,    setScanStatus]    = React.useState('Awaiting Scan')
+  const [scanState,     setScanState]     = React.useState('idle') // idle | scanning | success
   const [scanning,      setScanning]      = React.useState(false)
-  const [studentId,     setStudentId]     = React.useState('')
-  const [captured,      setCaptured]      = React.useState(false)
+  const [scanStatus,    setScanStatus]    = React.useState('Awaiting Scan')
   const [history,       setHistory]       = React.useState(initialHistory)
   const [toast,         setToast]         = React.useState(null)
-  const [modal,         setModal]         = React.useState(null)
   const [view,          setView]          = React.useState('home')
   const [weeklyData,    setWeeklyData]    = React.useState([])
   const [weeklyLoading, setWeeklyLoading] = React.useState(false)
 
-  const historyRef = React.useRef(null)
   const navLinks = [
     { label: 'Home',          href: '#' },
     { label: 'Weekly Report', href: '#' },
@@ -47,12 +44,13 @@ function StudentPortal({ currentUser, onLogout }) {
         if (!cancelled && logs.length > 0) {
           setHistory(logs.map(historyRowFromLog))
           const latest = logs[0]
+          if (latest.status === 'recognised') setScanState('success')
           setScanStatus(latest.status === 'recognised'
             ? `Face Detected — ${latest.name} Marked Present`
             : 'Face Not Recognised')
         }
-      } catch (error) {
-        console.warn('Backend unavailable, using demo student history.', error)
+      } catch (err) {
+        console.warn('Backend unavailable, using demo history.', err)
       }
     }
 
@@ -63,15 +61,15 @@ function StudentPortal({ currentUser, onLogout }) {
       socket.on('face_recognised', (log) => {
         setHistory(prev => {
           const row = historyRowFromLog(log)
-          return [row, ...prev.filter(item => item.id !== row.id)].slice(0, 20)
+          return [row, ...prev.filter(r => r.id !== row.id)].slice(0, 20)
         })
+        if (log.status === 'recognised') setScanState('success')
         setScanStatus(log.status === 'recognised'
           ? `Face Detected — ${log.name} Marked Present`
           : 'Face Not Recognised')
         showToast(log.status === 'recognised'
           ? `${log.name} marked Present.`
-          : 'Unrecognised face detected.',
-          log.status === 'recognised' ? 'success' : 'warning')
+          : 'Unrecognised face detected.', log.status === 'recognised' ? 'success' : 'warning')
       })
     }
 
@@ -81,24 +79,17 @@ function StudentPortal({ currentUser, onLogout }) {
     }
   }, [])
 
-  // ── Toast helper ────────────────────────────────────────────
   function showToast(message, type = 'success') {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
-  // ── Modal helper ────────────────────────────────────────────
-  function showModal(title, body, icon) {
-    setModal({ title, body, icon: icon || 'ℹ️' })
-  }
-
-  // ── Nav handler (called by Sidebar for all link clicks) ─────
   async function handleNav(label) {
     if (label === 'Weekly Report') {
       setView('weekly')
       if (weeklyData.length === 0 && !weeklyLoading) {
         if (!currentUser?.studentId) {
-          showToast('No Student ID on your account. Contact an admin to add it.', 'warning')
+          showToast('No Student ID on your account. Contact an admin.', 'warning')
           return
         }
         setWeeklyLoading(true)
@@ -116,10 +107,10 @@ function StudentPortal({ currentUser, onLogout }) {
     }
   }
 
-  // ── Start Scan ──────────────────────────────────────────────
   function handleStartScan() {
     if (scanning) return
     setScanning(true)
+    setScanState('scanning')
     setScanStatus('Scanning…')
     showToast('Face scan started. Please look at the camera.', 'info')
 
@@ -138,92 +129,81 @@ function StudentPortal({ currentUser, onLogout }) {
         })
         setHistory(prev => {
           const row = historyRowFromLog(response.log)
-          return [row, ...prev.filter(item => item.id !== row.id)].slice(0, 20)
+          return [row, ...prev.filter(r => r.id !== row.id)].slice(0, 20)
         })
+        setScanState('success')
         setScanStatus(`Face Detected — ${response.log.name} Marked Present`)
         showToast('Face recognised and saved to MongoDB.', 'success')
-      } catch (error) {
+      } catch (err) {
         const timeStr = now.toTimeString().slice(0, 5)
         const dateStr = now.toLocaleDateString('en-GB')
         setHistory(prev => [
           { date: dateStr, course: 'ICT307', session: 'Lecture', status: 'Present', checkIn: timeStr },
           ...prev,
         ])
+        setScanState('success')
         setScanStatus('Face Detected — Marked Present')
-        showToast('Demo scan completed. Start the backend to save this in MongoDB.', 'warning')
+        showToast('Demo scan completed. Start the backend to save to MongoDB.', 'warning')
       } finally {
         setScanning(false)
       }
     }, 2500)
   }
 
-  // ── Capture / Upload / Save ─────────────────────────────────
-  function handleCapture() {
-    setCaptured(true)
-    showToast('Face image captured! Enter your Student ID and click Save to enrol.', 'info')
-    setTimeout(() => setCaptured(false), 3000)
+  // KPI derivations
+  const presentCount = history.filter(r => r.status === 'Present').length
+  const lateCount    = history.filter(r => r.status === 'Late').length
+  const absentCount  = history.filter(r => r.status === 'Absent').length
+  const attendedCount = presentCount + lateCount
+  const attendancePct = history.length > 0
+    ? Math.round(attendedCount / history.length * 100)
+    : 0
+
+  // Status pill
+  function statusPill(s) {
+    return s === 'Present' ? <ApStatus kind="success">{s}</ApStatus> :
+           s === 'Late'    ? <ApStatus kind="warning">{s}</ApStatus> :
+           s === 'Absent'  ? <ApStatus kind="danger">{s}</ApStatus> :
+                             <ApStatus kind="neutral">{s}</ApStatus>
   }
 
-  function handleUpload() {
-    showModal('Upload Face Image',
-      'File upload requires a connected backend. Please ensure the server is running and try again, or use the Capture button to take a photo directly.',
-      '📁')
-  }
-
-  function handleSave() {
-    if (!studentId.trim()) { showToast('Please enter your Student ID before saving.', 'error'); return }
-    if (!captured)          { showToast('Please capture or upload a face image first.', 'warning'); return }
-    showModal('Face Enrolment Restricted',
-      'Only an Admin or Lecturer can create or update student access records. Please contact authorised staff.',
-      '🔒')
-  }
-
-  // ── View History ─────────────────────────────────────────────
-  function handleViewHistory() {
-    setTimeout(() => {
-      if (historyRef.current) historyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 50)
-  }
-
-  // ── Shared styles ───────────────────────────────────────────
+  // Toast colours
   const toastColours = {
-    success: { background: '#d3f9d8', border: '#8ce99a', color: '#2f9e44' },
-    info:    { background: '#dde4ff', border: '#748ffc', color: '#3b5bdb' },
-    warning: { background: '#fff9db', border: '#ffe066', color: '#c18a00' },
-    error:   { background: '#ffe3e3', border: '#ffa8a8', color: '#c92a2a' },
-  }
-  const overlayStyle = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+    success: { background: 'var(--success-50)', border: 'rgba(16,185,129,0.3)', color: 'var(--success)' },
+    info:    { background: 'var(--primary-50)', border: 'rgba(59,91,219,0.3)',  color: 'var(--primary)' },
+    warning: { background: 'var(--warning-50)', border: 'rgba(217,119,6,0.3)',  color: 'var(--warning)' },
+    error:   { background: 'var(--danger-50)',  border: 'rgba(220,38,38,0.3)',  color: 'var(--danger)'  },
   }
 
-  // ── Weekly report helpers ───────────────────────────────────
   const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thurs', 'Fri', 'Sat', 'Sun']
   const DAY_KEYS   = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
   function pctColor(v) {
-    if (v === null || v === undefined) return '#a3aed0'
-    return v >= 80 ? '#2f9e44' : v >= 60 ? '#f59e0b' : '#fa5252'
+    if (v === null || v === undefined) return 'var(--ink-300)'
+    return v >= 80 ? 'var(--success)' : v >= 60 ? 'var(--warning)' : 'var(--danger)'
   }
 
+  const today = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })
+
   return (
-    <div className="dashboard-body">
+    <div className="ap-shell">
       <Sidebar
         role="Student"
         navLinks={navLinks}
         onLogout={onLogout}
         onNav={handleNav}
+        onSettings={() => setView('settings')}
         currentUser={currentUser}
       />
 
-      <main className="main-content">
+      <main className="ap-main">
 
-        {/* ── Toast ── */}
+        {/* Toast */}
         {toast && (
           <div style={{
-            position: 'fixed', top: '20px', right: '24px', zIndex: 300,
-            padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
-            maxWidth: '340px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            position: 'fixed', top: 20, right: 24, zIndex: 300,
+            padding: '12px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+            maxWidth: 340, boxShadow: 'var(--shadow-md)',
             border: `1px solid ${toastColours[toast.type].border}`,
             background: toastColours[toast.type].background,
             color: toastColours[toast.type].color,
@@ -232,127 +212,217 @@ function StudentPortal({ currentUser, onLogout }) {
           </div>
         )}
 
-        {/* ── Modal ── */}
-        {modal && (
-          <div style={overlayStyle}>
-            <div style={{
-              background: 'white', padding: '30px', borderRadius: '14px',
-              width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: '42px', marginBottom: '12px' }}>{modal.icon}</div>
-              <h3 style={{ color: '#3b5bdb', fontSize: '17px', marginBottom: '12px' }}>{modal.title}</h3>
-              <p style={{ color: '#4a5a8a', fontSize: '13px', lineHeight: 1.7, marginBottom: '22px' }}>
-                {modal.body}
-              </p>
-              <button className="btn-primary" style={{ width: '100%' }} onClick={() => setModal(null)}>
-                OK, Got It
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════
-            HOME VIEW
-        ═══════════════════════════════════════════ */}
+        {/* ═══ HOME VIEW ═══ */}
         {view === 'home' && (
           <>
-            <header className="portal-header">
-              <h1>Student Portal</h1>
-              <p>Raspberry Pi • OpenCV • Secure Sync</p>
-            </header>
+            <ApTopBar
+              title={`Hi ${currentUser?.name?.split(' ')[0] || 'Student'}`}
+              sub={today + ' · ICT307 next'}>
+              <button className="ap-btn ghost">
+                <ApIcon name="bell" size={15} /> Alerts
+              </button>
+              <button className="ap-btn primary" onClick={handleStartScan} disabled={scanning}>
+                <ApIcon name="scan" size={14} />
+                {scanning ? 'Scanning…' : 'Check in now'}
+              </button>
+            </ApTopBar>
 
-            <div className="student-grid">
+            {/* KPI strip */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+              <ApKpi label="Semester attendance" value={`${attendancePct}%`}
+                     accent="var(--success)" />
+              <ApKpi label="Classes attended" value={attendedCount}
+                     sub={`of ${history.length} recorded`} />
+              <ApKpi label="Late arrivals" value={lateCount} sub="this semester" />
+              <ApKpi label="Absences" value={absentCount} sub="recorded" />
+            </div>
 
-              {/* Check-in Kiosk */}
-              <div className="card">
-                <div className="card-header">
-                  <h3>Check-in Kiosk</h3>
-                  <button
-                    className="btn-primary"
-                    onClick={handleStartScan}
-                    disabled={scanning}
-                    style={{ opacity: scanning ? 0.7 : 1 }}
-                  >
-                    {scanning ? 'Scanning…' : 'Start Scan'}
+            {/* Main grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 1fr', gap: 16 }}>
+
+              {/* Check-in kiosk */}
+              <div className="ap-card">
+                <div className="ap-card-head">
+                  <div>
+                    <div className="ap-card-title">Check-in kiosk</div>
+                    <div className="ap-card-sub">Look at the camera. Recognition takes about 1–2 seconds.</div>
+                  </div>
+                  <ApStatus kind={
+                    scanState === 'success' ? 'success' :
+                    scanState === 'scanning' ? 'info' : 'neutral'
+                  }>
+                    {scanState === 'success' ? 'Marked present' :
+                     scanState === 'scanning' ? 'Scanning…' : 'Awaiting scan'}
+                  </ApStatus>
+                </div>
+
+                <div className="ap-camera" style={{ height: 260 }}>
+                  <div className="ap-camera-corner tl" />
+                  <div className="ap-camera-corner tr" />
+                  <div className="ap-camera-corner bl" />
+                  <div className="ap-camera-corner br" />
+                  {scanning && <div className="ap-scan-line" />}
+
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column', gap: 10, zIndex: 1,
+                  }}>
+                    {scanState === 'success' ? (
+                      <>
+                        <div style={{
+                          width: 64, height: 64, borderRadius: '50%',
+                          background: 'rgba(16,185,129,0.18)',
+                          display: 'grid', placeItems: 'center',
+                          border: '2px solid var(--success)',
+                          color: 'var(--success)',
+                        }}>
+                          <ApIcon name="check" size={32} stroke={2.2} />
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>
+                          Face recognised · {currentUser?.name?.split(' ')[0] || 'Student'}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-mono)' }}>
+                          Confidence 95% · ICT307 · {new Date().toTimeString().slice(0, 5)}
+                        </div>
+                      </>
+                    ) : scanning ? (
+                      <>
+                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Hold still…</div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>Scanning face</div>
+                      </>
+                    ) : (
+                      <>
+                        <ApIcon name="camera" size={42} color="rgba(255,255,255,0.4)" stroke={1.2} />
+                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>Camera preview</div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Pi chip overlay */}
+                  <div style={{
+                    position: 'absolute', left: 12, bottom: 12, zIndex: 2,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(15,26,74,0.55)', backdropFilter: 'blur(4px)',
+                    padding: '5px 10px', borderRadius: 999,
+                    fontSize: 11, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-mono)',
+                  }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 0 2px rgba(52,211,153,0.25)', display: 'inline-block' }} />
+                    pi-cam-04 · L2-04
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="ap-btn primary" onClick={handleStartScan} disabled={scanning}>
+                    <ApIcon name="scan" size={14} />
+                    {scanning ? 'Scanning…' : scanState === 'success' ? 'Scan again' : 'Start scan'}
                   </button>
-                </div>
-                <div className="camera-preview" style={{
-                  border: scanning ? '2px solid #4dabf7' : '1px solid #dde3f0',
-                  transition: 'border 0.3s',
-                }}>
-                  {scanning
-                    ? <span style={{ color: '#4dabf7', fontWeight: 600 }}>🎥 Scanning face…</span>
-                    : scanStatus.includes('✓')
-                      ? <span style={{ color: '#40c057', fontWeight: 600 }}>✓ Face Captured</span>
-                      : 'Camera Preview'
-                  }
-                </div>
-                <div className="enroll-section">
-                  <h4>Enroll / Update Face</h4>
-                  <div className="input-group">
-                    <button
-                      className="btn-capture"
-                      onClick={handleCapture}
-                      style={{ background: captured ? 'linear-gradient(to right,#40c057,#2f9e44)' : undefined }}
-                    >
-                      {captured ? '✓ Captured' : 'Capture'}
-                    </button>
-                    <button className="btn-upload" onClick={handleUpload}>Upload</button>
-                    <input
-                      type="text"
-                      placeholder="Student ID"
-                      value={studentId}
-                      onChange={e => setStudentId(e.target.value)}
-                    />
-                    <button className="btn-save" onClick={handleSave}>Save</button>
+                  <button className="ap-btn ghost">
+                    <ApIcon name="camera" size={14} /> Re-enrol face
+                  </button>
+                  <div style={{ marginLeft: 'auto', alignSelf: 'center', fontSize: 11.5, color: 'var(--ink-400)' }}>
+                    Last scan · {history[0]?.date || '—'} {history[0]?.checkIn || ''}
                   </div>
                 </div>
               </div>
 
-              {/* Attendance Status */}
-              <div className="card">
-                <div className="card-header">
-                  <h3>Attendance Status</h3>
-                  <button className="btn-outline" onClick={handleViewHistory}>View History</button>
+              {/* Attendance status */}
+              <div className="ap-card">
+                <div className="ap-card-head">
+                  <div>
+                    <div className="ap-card-title">Attendance status</div>
+                    <div className="ap-card-sub">Current session · ICT307</div>
+                  </div>
                 </div>
-                <div className="status-content">
-                  <p className="status-main" style={{
-                    color: scanStatus.includes('✓') ? '#40c057' :
-                           scanStatus.includes('Scanning') ? '#4dabf7' : '#2b3674',
-                  }}>
-                    {scanStatus}
-                  </p>
-                  <p className="status-sub">
-                    ICT307 • {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })} • {new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              </div>
 
+                <div style={{
+                  padding: '20px 16px',
+                  background: scanState === 'success' ? 'var(--success-50)' :
+                              scanState === 'scanning' ? 'var(--primary-50)' : 'var(--ink-50)',
+                  borderRadius: 10,
+                  border: `1px solid ${
+                    scanState === 'success' ? 'rgba(16,185,129,0.2)' :
+                    scanState === 'scanning' ? 'rgba(59,91,219,0.2)' : 'var(--ink-100)'
+                  }`,
+                  textAlign: 'center',
+                }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: scanState === 'success' ? 'var(--success)' :
+                           scanState === 'scanning' ? 'var(--primary)' : 'var(--ink-500)',
+                    marginBottom: 4,
+                  }}>
+                    {scanState === 'success' ? 'Present' :
+                     scanState === 'scanning' ? 'Scanning…' : 'Not yet checked in'}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-400)', fontFamily: 'var(--font-mono)' }}>
+                    {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {' · '}
+                    {new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: 'This semester', val: `${attendancePct}%`, color: pctColor(attendancePct) },
+                    { label: 'Classes attended', val: `${attendedCount} / ${history.length}`, color: 'var(--ink-700)' },
+                    { label: 'Late arrivals', val: lateCount, color: lateCount > 0 ? 'var(--warning)' : 'var(--ink-400)' },
+                    { label: 'Absences', val: absentCount, color: absentCount > 0 ? 'var(--danger)' : 'var(--ink-400)' },
+                  ].map(item => (
+                    <div key={item.label} style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', fontSize: 13,
+                    }}>
+                      <span style={{ color: 'var(--ink-500)' }}>{item.label}</span>
+                      <span style={{ fontWeight: 700, color: item.color }}>{item.val}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button className="ap-btn ghost" style={{ justifyContent: 'center' }}
+                        onClick={() => handleNav('Weekly Report')}>
+                  View weekly report <ApIcon name="arrowRight" size={14} />
+                </button>
+              </div>
             </div>
 
-            {/* Attendance History */}
-            <div className="card student-history-card" ref={historyRef}>
-              <div className="card-header">
-                <h3>Attendance History</h3>
-                <span style={{ fontSize: '12px', color: '#a3aed0' }}>{history.length} records</span>
+            {/* Attendance history */}
+            <div className="ap-card padless">
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '18px 20px 14px',
+              }}>
+                <div>
+                  <div className="ap-card-title">Attendance history</div>
+                  <div className="ap-card-sub">{history.length} records · sorted by most recent</div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="ap-btn ghost sm">
+                    <ApIcon name="filter" size={13} /> Filter
+                  </button>
+                  <button className="ap-btn ghost sm">
+                    <ApIcon name="download" size={13} /> Export
+                  </button>
+                </div>
               </div>
-              <table>
+              <table className="ap-table">
                 <thead>
                   <tr>
-                    <th>Date</th><th>Course</th><th>Session</th><th>Status</th><th>Check-in</th>
+                    <th>Date</th>
+                    <th>Course</th>
+                    <th>Session</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: 'right' }}>Check-in</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((row, i) => (
                     <tr key={i}>
-                      <td>{row.date}</td>
-                      <td>{row.course}</td>
+                      <td style={{ color: 'var(--ink-900)', fontWeight: 600 }}>{row.date}</td>
+                      <td className="mono">{row.course}</td>
                       <td>{row.session}</td>
-                      <td className={
-                        row.status === 'Present' ? 'text-present' :
-                        row.status === 'Absent'  ? 'text-absent'  : 'text-late'
-                      }>{row.status}</td>
-                      <td>{row.checkIn}</td>
+                      <td>{statusPill(row.status)}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{row.checkIn}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -361,32 +431,35 @@ function StudentPortal({ currentUser, onLogout }) {
           </>
         )}
 
-        {/* ═══════════════════════════════════════════
-            WEEKLY REPORT VIEW
-        ═══════════════════════════════════════════ */}
+        {/* ═══ WEEKLY REPORT VIEW ═══ */}
         {view === 'weekly' && (
           <>
-            <header className="portal-header">
-              <h1>Weekly Attendance Report</h1>
-              <p>{currentUser?.name} • {currentUser?.studentId || currentUser?.username}</p>
-            </header>
+            <ApTopBar
+              title="Weekly Report"
+              sub={`${currentUser?.name || ''} · ${currentUser?.studentId || currentUser?.username || ''}`}>
+              <button className="ap-btn ghost" onClick={() => setView('home')}>
+                ← Back to dashboard
+              </button>
+            </ApTopBar>
 
-            <div className="card">
-              <div className="card-header" style={{ marginBottom: '4px' }}>
-                <h3>Student Attendance View By Week</h3>
-                {!weeklyLoading && weeklyData.length > 0 && (
-                  <span style={{ fontSize: '12px', color: '#a3aed0' }}>{weeklyData.length} week(s)</span>
-                )}
+            <div className="ap-card">
+              <div className="ap-card-head">
+                <div>
+                  <div className="ap-card-title">Student Attendance View By Week</div>
+                  {!weeklyLoading && weeklyData.length > 0 && (
+                    <div className="ap-card-sub">{weeklyData.length} week(s)</div>
+                  )}
+                </div>
               </div>
 
               {weeklyLoading && (
-                <p style={{ color: '#a3aed0', textAlign: 'center', padding: '40px 0' }}>
+                <p style={{ color: 'var(--ink-300)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
                   Loading weekly report…
                 </p>
               )}
 
               {!weeklyLoading && weeklyData.length === 0 && (
-                <p style={{ color: '#a3aed0', textAlign: 'center', padding: '40px 0' }}>
+                <p style={{ color: 'var(--ink-300)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
                   No attendance records found for Student ID <strong>{currentUser?.studentId}</strong>.<br />
                   Records appear here once the Pi recognises you in class.
                 </p>
@@ -394,10 +467,10 @@ function StudentPortal({ currentUser, onLogout }) {
 
               {!weeklyLoading && weeklyData.length > 0 && (
                 <>
-                  <div style={{ overflowX: 'auto', marginTop: '14px' }}>
+                  <div style={{ overflowX: 'auto' }}>
                     <table style={{ minWidth: '1100px', fontSize: '12px', borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr style={{ background: '#f8f9ff' }}>
+                        <tr style={{ background: 'var(--surface-2)' }}>
                           {['Term', 'Week Length', ...DAY_LABELS,
                             'Study Hrs', 'Other Hrs', 'Weekly Attd Hrs.',
                             'Weekly Class Hrs', 'Weekly Attd%',
@@ -406,8 +479,8 @@ function StudentPortal({ currentUser, onLogout }) {
                             <th key={h} style={{
                               padding: '10px 8px', textAlign: 'center',
                               whiteSpace: 'nowrap', fontSize: '11px',
-                              fontWeight: 700, color: '#2b3674',
-                              borderBottom: '2px solid #e8edf5',
+                              fontWeight: 700, color: 'var(--ink-700)',
+                              borderBottom: '2px solid var(--ink-100)',
                             }}>
                               {h}
                             </th>
@@ -416,11 +489,11 @@ function StudentPortal({ currentUser, onLogout }) {
                       </thead>
                       <tbody>
                         {weeklyData.map((week, i) => (
-                          <tr key={i} style={{ background: i % 2 === 0 ? 'white' : '#fafbff' }}>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#4a5a8a' }}>
+                          <tr key={i} style={{ background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)' }}>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--ink-500)' }}>
                               {week.term}
                             </td>
-                            <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: '#4a5a8a' }}>
+                            <td style={{ padding: '9px 8px', whiteSpace: 'nowrap', color: 'var(--ink-500)' }}>
                               ({week.weekRange})
                             </td>
                             {DAY_KEYS.map(dk => {
@@ -431,24 +504,24 @@ function StudentPortal({ currentUser, onLogout }) {
                                 <td key={dk} style={{
                                   padding: '9px 8px', textAlign: 'center',
                                   fontWeight: isNC ? 'normal' : '600',
-                                  color: isNC ? '#a3aed0' : isAbsent ? '#fa5252' : '#2b3674',
-                                  borderBottom: '1px solid #f1f4fa',
+                                  color: isNC ? 'var(--ink-300)' : isAbsent ? 'var(--danger)' : 'var(--ink-700)',
+                                  borderBottom: '1px solid var(--ink-100)',
                                 }}>
                                   {isNC ? 'NC' : val}
                                 </td>
                               )
                             })}
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>{week.studyHrs}</td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#a3aed0' }}>{week.otherHrs}</td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: '#2b3674' }}>{week.weeklyAttdHrs}</td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', color: '#4a5a8a' }}>{week.weeklyClassHrs}</td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '700', color: pctColor(week.weeklyAttdPct) }}>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: 'var(--ink-700)' }}>{week.studyHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--ink-300)' }}>{week.otherHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: 'var(--ink-700)' }}>{week.weeklyAttdHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', color: 'var(--ink-500)' }}>{week.weeklyClassHrs}</td>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 700, color: pctColor(week.weeklyAttdPct) }}>
                               {week.weeklyAttdPct !== null ? week.weeklyAttdPct : '—'}
                             </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: pctColor(week.semesterCurrAttd) }}>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: pctColor(week.semesterCurrAttd) }}>
                               {week.semesterCurrAttd !== null ? week.semesterCurrAttd : '—'}
                             </td>
-                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: '600', color: pctColor(week.semesterProjAttd) }}>
+                            <td style={{ padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: pctColor(week.semesterProjAttd) }}>
                               {week.semesterProjAttd !== null ? week.semesterProjAttd : '—'}
                             </td>
                           </tr>
@@ -458,32 +531,37 @@ function StudentPortal({ currentUser, onLogout }) {
                   </div>
 
                   <div style={{
-                    marginTop: '20px', padding: '14px 16px',
-                    background: '#f8f9ff', borderRadius: '10px',
-                    fontSize: '12px', lineHeight: 1.9, color: '#2b3674',
+                    padding: '14px 16px', background: 'var(--surface-2)',
+                    borderRadius: 10, border: '1px solid var(--ink-100)',
+                    fontSize: 12, lineHeight: 1.9, color: 'var(--ink-700)',
                   }}>
                     <p style={{ margin: '0 0 2px' }}>
-                      <strong>Weekly Attd%:</strong> Weekly attendance percentage. Weekly Attd Hrs. / Weekly Class Hrs × 100
+                      <strong>Weekly Attd%:</strong> Weekly Attd Hrs. / Weekly Class Hrs × 100
                     </p>
                     <p style={{ margin: '0 0 2px' }}>
-                      <strong>Semester Curr. Attd.:</strong> Cumulative attendance up to that week. Total attended / total class hours × 100
+                      <strong>Semester Curr. Attd.:</strong> Cumulative attendance up to that week
                     </p>
                     <p style={{ margin: '0 0 10px' }}>
-                      <strong>Semester Proj. Attd.:</strong> Maximum possible % if student attends 100% of all remaining weeks
+                      <strong>Semester Proj. Attd.:</strong> Max possible % if attending all remaining weeks
                     </p>
-                    <p style={{ margin: 0, color: '#a3aed0' }}>
+                    <p style={{ margin: 0, color: 'var(--ink-400)' }}>
                       <strong>NC</strong> = No Class &nbsp;|&nbsp;
-                      <strong style={{ color: '#fa5252' }}>0</strong> = Absent (class was held) &nbsp;|&nbsp;
+                      <strong style={{ color: 'var(--danger)' }}>0</strong> = Absent &nbsp;|&nbsp;
                       <strong>3</strong> = 3 hrs attended &nbsp;|&nbsp;
-                      <span style={{ color: '#2f9e44', fontWeight: 700 }}>Green</span> ≥ 80% &nbsp;
-                      <span style={{ color: '#f59e0b', fontWeight: 700 }}>Orange</span> 60–79% &nbsp;
-                      <span style={{ color: '#fa5252', fontWeight: 700 }}>Red</span> &lt; 60%
+                      <span style={{ color: 'var(--success)', fontWeight: 700 }}>Green</span> ≥ 80% &nbsp;
+                      <span style={{ color: 'var(--warning)', fontWeight: 700 }}>Orange</span> 60–79% &nbsp;
+                      <span style={{ color: 'var(--danger)', fontWeight: 700 }}>Red</span> &lt; 60%
                     </p>
                   </div>
                 </>
               )}
             </div>
           </>
+        )}
+
+        {/* ═══ SETTINGS VIEW ═══ */}
+        {view === 'settings' && (
+          <SettingsPage role="Student" currentUser={currentUser} onBack={() => setView('home')} />
         )}
 
       </main>

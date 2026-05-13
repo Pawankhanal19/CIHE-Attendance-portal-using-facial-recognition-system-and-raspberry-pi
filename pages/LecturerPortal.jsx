@@ -9,16 +9,19 @@ function LecturerPortal({ currentUser, onLogout }) {
   const [pendingSync,   setPendingSync]   = React.useState(0)
   const [synced,        setSynced]        = React.useState(0)
   const [attendance,    setAttendance]    = React.useState([])
-  const [toast,         setToast]         = React.useState(null)  // { message, type: 'success'|'info'|'warning'|'error' }
-  const [modal,         setModal]         = React.useState(null)  // { title, body, icon }
-  const [overrideId,    setOverrideId]    = React.useState(null)  // student id being overridden
+  const [toast,         setToast]         = React.useState(null)
+  const [modal,         setModal]         = React.useState(null)
+  const [overrideId,    setOverrideId]    = React.useState(null)
   const [overrideVal,   setOverrideVal]   = React.useState('Present')
   const [newStudent,    setNewStudent]    = React.useState({ name: '', username: '', password: '', email: '', studentId: '' })
+  const [showAddStudent,setShowAddStudent]= React.useState(false)
   const [savedNotes,    setSavedNotes]    = React.useState([])
   const [savingNotes,   setSavingNotes]   = React.useState(false)
-  const [activeSession, setActiveSession] = React.useState(null)  // ClassSession object from DB
+  const [activeSession, setActiveSession] = React.useState(null)
   const [alerts,        setAlerts]        = React.useState([])
-  const [piStatus,      setPiStatus]      = React.useState(null)  // { online, running, cpu_percent, temperature }
+  const [piStatus,      setPiStatus]      = React.useState(null)
+  const [sessionSearch, setSessionSearch] = React.useState('')
+  const [view,          setView]          = React.useState('home')
 
   const navLinks = [{ label: 'Home', href: '#' }]
 
@@ -39,7 +42,7 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
   }
 
-  // ── Initial data load + socket ──────────────────────────────
+  // Initial data load + socket
   React.useEffect(() => {
     let cancelled = false
 
@@ -50,16 +53,16 @@ function LecturerPortal({ currentUser, onLogout }) {
           setAttendance(logs.map(attendanceRowFromLog))
           setSynced(logs.length)
           setPendingSync(0)
-          const unrecognised = logs.filter(l => l.status === 'unrecognised' || l.attendance_status === 'Denied')
-          setAlerts(unrecognised.map(l => ({
+          const unrec = logs.filter(l => l.status === 'unrecognised' || l.attendance_status === 'Denied')
+          setAlerts(unrec.map(l => ({
             id: l.id,
-            message: `Unrecognised face detected at `,
-            highlight: new Date(l.time || l.created_at).toTimeString().slice(0, 5),
-            device: l.device_id,
+            icon: 'alert', tint: 'warning',
+            title: 'Unrecognised face detected',
+            body: `${l.device_id || 'Pi'} captured a low-confidence match at ${new Date(l.time || l.created_at).toTimeString().slice(0, 5)}`,
           })))
         }
-      } catch (error) {
-        console.warn('Backend unavailable, using demo lecturer data.', error)
+      } catch (err) {
+        console.warn('Backend unavailable.', err)
       }
     }
 
@@ -75,10 +78,9 @@ function LecturerPortal({ currentUser, onLogout }) {
         showToast(`${log.name} attendance updated from Raspberry Pi.`, 'success')
         if (log.status === 'unrecognised' || log.attendance_status === 'Denied') {
           setAlerts(prev => [{
-            id: log.id,
-            message: `Unrecognised face detected at `,
-            highlight: new Date(log.time || Date.now()).toTimeString().slice(0, 5),
-            device: log.device_id,
+            id: log.id, icon: 'alert', tint: 'warning',
+            title: 'Unrecognised face detected',
+            body: `${log.device_id || 'Pi'} captured a low-confidence match at ${new Date(log.time || Date.now()).toTimeString().slice(0, 5)}`,
           }, ...prev].slice(0, 10))
         }
       })
@@ -91,7 +93,7 @@ function LecturerPortal({ currentUser, onLogout }) {
     }
   }, [])
 
-  // ── Pi status polling (every 5 s) ───────────────────────────
+  // Pi status polling (every 5 s)
   React.useEffect(() => {
     async function pollPiStatus() {
       try {
@@ -101,41 +103,38 @@ function LecturerPortal({ currentUser, onLogout }) {
           setActiveSession(data.activeSession)
           setSessionActive(true)
         }
-      } catch (error) {
+      } catch (err) {
         setPiStatus({ online: false })
       }
     }
-
     pollPiStatus()
     const piInterval = setInterval(pollPiStatus, 5000)
     return () => clearInterval(piInterval)
   }, [])
 
-  // ── Session notes load ──────────────────────────────────────
+  // Session notes load
   React.useEffect(() => {
     async function loadNotes() {
       try {
         const data = await AttendanceAPI.fetchSessionNotes()
         setSavedNotes(data)
-      } catch (error) {
-        console.warn('Could not load session notes:', error)
+      } catch (err) {
+        console.warn('Could not load session notes:', err)
       }
     }
     loadNotes()
   }, [])
 
-  // ── Toast helper (auto-dismisses after 3s) ──────────────────
   function showToast(message, type = 'success') {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
-  // ── Modal helper ────────────────────────────────────────────
-  function showModal(title, body, icon) {
-    setModal({ title, body, icon: icon || 'ℹ️' })
+  function showModal(title, body) {
+    setModal({ title, body })
   }
 
-  // ── Session controls ────────────────────────────────────────
+  // Session controls
   async function handleStartSession() {
     if (!courseCode.trim()) {
       showToast('Please enter a course code before starting a session.', 'error')
@@ -148,75 +147,46 @@ function LecturerPortal({ currentUser, onLogout }) {
       const piMsg = session.piStatus?.error
         ? ` (Pi: ${session.piStatus.error})`
         : session.piStatus?.status === 'started' ? ' — Pi camera started.' : ''
-      showToast(`Session started for ${courseCode}${roomSession ? ' — ' + roomSession : ''}${piMsg}`, 'success')
-    } catch (error) {
-      showToast(error.message || 'Could not save session to backend.', 'error')
-    }
-  }
-
-  async function handleAddStudent() {
-    if (!newStudent.name.trim() || !newStudent.username.trim() || !newStudent.password.trim()) {
-      showToast('Please enter student name, username, and password.', 'error')
-      return
-    }
-
-    try {
-      await AttendanceAPI.createUser({ ...newStudent, role: 'Student' })
-      setNewStudent({ name: '', username: '', password: '', email: '', studentId: '' })
-      showToast('Student login created successfully.', 'success')
-    } catch (error) {
-      showToast(error.message || 'Could not create student login.', 'error')
+      showToast(`Session started for ${courseCode}${roomSession ? ' · ' + roomSession : ''}${piMsg}`, 'success')
+    } catch (err) {
+      showToast(err.message || 'Could not save session to backend.', 'error')
     }
   }
 
   async function handleStopSession() {
-    if (!sessionActive) {
-      showToast('No active session to stop.', 'warning')
-      return
-    }
+    if (!sessionActive) { showToast('No active session to stop.', 'warning'); return }
     try {
-      if (activeSession?._id) {
-        await AttendanceAPI.stopSession(activeSession._id)
-      }
-    } catch (error) {
-      console.warn('Could not update session end time:', error)
+      if (activeSession?._id) await AttendanceAPI.stopSession(activeSession._id)
+    } catch (err) {
+      console.warn('Could not update session end time:', err)
     }
     setSessionActive(false)
     setActiveSession(null)
-    showToast(`Session for ${courseCode} has been stopped and saved to database.`, 'info')
+    showToast(`Session for ${courseCode || 'current class'} stopped and saved.`, 'info')
   }
 
   function handleExportCSV() {
-    if (attendance.length === 0) {
-      showModal('Export CSV', 'No attendance records to export yet.', '📁')
-      return
-    }
-
+    if (attendance.length === 0) { showModal('Export CSV', 'No attendance records to export yet.'); return }
     let rows = attendance
     if (activeSession) {
       const start = new Date(activeSession.startTime)
-      const end   = activeSession.endTime ? new Date(activeSession.endTime) : new Date()
+      const end = activeSession.endTime ? new Date(activeSession.endTime) : new Date()
       rows = attendance.filter(s => s.rawTimestamp >= start && s.rawTimestamp <= end)
-      if (rows.length === 0) {
-        showModal('Export CSV', 'No attendance records were captured during this session.', '📁')
-        return
-      }
+      if (rows.length === 0) { showModal('Export CSV', 'No attendance records captured during this session.'); return }
     }
-
     const csvRows = [['Student', 'Status', 'Time', 'Course', 'Room']]
     rows.forEach(s => csvRows.push([s.name, s.status, s.time, courseCode || 'ICT307', roomSession || 'Lecture']))
     const csv  = csvRows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
-    a.href     = url
+    a.href = url
     a.download = `attendance_${courseCode || 'session'}_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    showToast(`CSV exported — ${rows.length} record(s) for ${courseCode || 'session'}.`, 'success')
+    showToast(`CSV exported — ${rows.length} record(s).`, 'success')
   }
 
-  // ── Sync controls ───────────────────────────────────────────
   async function handleSyncNow() {
     showToast('Syncing with database…', 'info')
     try {
@@ -225,45 +195,39 @@ function LecturerPortal({ currentUser, onLogout }) {
         setAttendance(logs.map(attendanceRowFromLog))
         setSynced(logs.length)
         setPendingSync(0)
-        showToast(`Synced — ${logs.length} record(s) loaded from database.`, 'success')
+        showToast(`Synced — ${logs.length} record(s) loaded.`, 'success')
       } else {
         showToast('No records found in database.', 'info')
       }
-    } catch (error) {
+    } catch (err) {
       showToast('Could not reach backend. Check the server is running.', 'error')
     }
   }
 
-  // ── Attendance row actions ──────────────────────────────────
   async function handleMarkPresent(id) {
     const now = new Date().toTimeString().slice(0, 5)
     const student = attendance.find(s => s.id === id)
-    setAttendance(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'Present', time: now, recognized: true } : s
-    ))
-    showToast(`${student.name} marked as Present.`, 'success')
+    setAttendance(prev => prev.map(s => s.id === id ? { ...s, status: 'Present', time: now, recognized: true } : s))
+    showToast(`${student?.name || 'Student'} marked as Present.`, 'success')
     try {
       await AttendanceAPI.updateAttendanceLog(id, { attendanceStatus: 'Present' })
-    } catch (error) {
+    } catch (err) {
       setPendingSync(p => p + 1)
     }
   }
 
   function handleRetry(id) {
-    setAttendance(prev => prev.map(s =>
-      s.id === id ? { ...s, status: 'Scanning…', time: '—' } : s
-    ))
+    setAttendance(prev => prev.map(s => s.id === id ? { ...s, status: 'Scanning…', time: '—' } : s))
     setTimeout(() => {
-      setAttendance(prev => prev.map(s =>
-        s.id === id ? { ...s, status: 'Not Recognized', time: '—' } : s
-      ))
-      showToast('Face scan retried — student still not recognized. Try "Mark Present" manually.', 'warning')
+      setAttendance(prev => prev.map(s => s.id === id ? { ...s, status: 'Not Recognized', time: '—' } : s))
+      showToast('Retry complete — still not recognised. Use "Mark present" manually.', 'warning')
     }, 1500)
   }
 
   function handleOverrideOpen(id) {
+    const student = attendance.find(s => s.id === id)
     setOverrideId(id)
-    setOverrideVal('Present')
+    setOverrideVal(student?.status || 'Present')
   }
 
   async function handleOverrideSave() {
@@ -274,337 +238,422 @@ function LecturerPortal({ currentUser, onLogout }) {
         ? { ...s, status: overrideVal, time: overrideVal === 'Absent' ? '—' : now }
         : s
     ))
-    showToast(`${student.name}'s status overridden to "${overrideVal}".`, 'info')
+    showToast(`${student?.name || 'Student'}'s status overridden to "${overrideVal}".`, 'info')
     setOverrideId(null)
     try {
       await AttendanceAPI.updateAttendanceLog(overrideId, { attendanceStatus: overrideVal })
-    } catch (error) {
+    } catch (err) {
       setPendingSync(p => p + 1)
     }
   }
 
   function handleDetails(id) {
     const s = attendance.find(s => s.id === id)
-    showModal(
-      `Details — ${s.name}`,
-      `Student ID: ${s.personId}\nStatus: ${s.status}\nCheck-in: ${s.date} at ${s.time}\nCourse: ${s.course}\nDevice: ${s.deviceId}\nConfidence: ${s.confidence ? s.confidence + '%' : '—'}`,
-      '👤'
-    )
+    showModal(`Student details — ${s?.name}`,
+      `Student ID: ${s?.personId}\nStatus: ${s?.status}\nCheck-in: ${s?.date} at ${s?.time}\nCourse: ${s?.course}\nDevice: ${s?.deviceId}\nConfidence: ${s?.confidence ? s.confidence + '%' : '—'}`)
   }
 
-  // ── Session notes ───────────────────────────────────────────
-  async function handleSaveNotes() {
-    if (!notes.trim()) {
-      showToast('Nothing to save — notes are empty.', 'warning')
+  async function handleAddStudent() {
+    if (!newStudent.name.trim() || !newStudent.username.trim() || !newStudent.password.trim()) {
+      showToast('Please enter student name, username, and password.', 'error')
       return
     }
+    try {
+      await AttendanceAPI.createUser({ ...newStudent, role: 'Student' })
+      setNewStudent({ name: '', username: '', password: '', email: '', studentId: '' })
+      setShowAddStudent(false)
+      showToast('Student login created successfully.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Could not create student login.', 'error')
+    }
+  }
+
+  async function handleSaveNotes() {
+    if (!notes.trim()) { showToast('Nothing to save — notes are empty.', 'warning'); return }
     setSavingNotes(true)
     try {
       const saved = await AttendanceAPI.saveSessionNote(notes.trim(), courseCode, roomSession)
       setSavedNotes(prev => [saved, ...prev])
       setNotesSaved(true)
       setNotes('')
-      showToast('Notes saved to database successfully!', 'success')
+      showToast('Notes saved to database!', 'success')
       setTimeout(() => setNotesSaved(false), 3000)
-    } catch (error) {
-      showToast(error.message || 'Could not save notes. Is the backend running?', 'error')
+    } catch (err) {
+      showToast(err.message || 'Could not save notes. Is the backend running?', 'error')
     } finally {
       setSavingNotes(false)
     }
   }
 
-  // ── Derived counts ──────────────────────────────────────────
-  const presentCount = attendance.filter(s => s.status === 'Present').length
-  const absentCount  = attendance.filter(s => s.status === 'Absent').length
+  // Derived stats
+  const presentCount  = attendance.filter(s => s.status === 'Present').length
+  const lateCount     = attendance.filter(s => s.status === 'Late').length
+  const absentCount   = attendance.filter(s => s.status === 'Absent').length
+  const needsReview   = attendance.filter(s => !s.recognized).length
   const totalStudents = attendance.length
 
-  // ── Pi status label ─────────────────────────────────────────
-  function piStatusLabel() {
-    if (!piStatus) return '⟳ Checking Pi…'
-    if (piStatus.online === false) return '🔴 Pi offline'
-    const base = `🟢 Pi online · CPU ${piStatus.cpu_percent ?? '—'}% · ${piStatus.temperature ?? '—'}°C`
-    return piStatus.running ? `${base} · 📹 Scanning` : `${base} · 💤 Idle`
+  // Pi label for topbar
+  function piLabel() {
+    if (!piStatus) return null
+    if (piStatus.online === false) return 'Pi offline'
+    return `pi · ${piStatus.cpu_percent ?? '—'}% · ${piStatus.temperature ?? '—'}°C`
   }
 
-  // ── Toast colours ───────────────────────────────────────────
+  // Status pill
+  function statusPill(s) {
+    return s === 'Present'        ? <ApStatus kind="success">{s}</ApStatus> :
+           s === 'Late'           ? <ApStatus kind="warning">{s}</ApStatus> :
+           s === 'Absent'         ? <ApStatus kind="danger">{s}</ApStatus>  :
+           s === 'Not Recognized' ? <ApStatus kind="neutral">{s}</ApStatus> :
+                                    <ApStatus kind="info">{s}</ApStatus>
+  }
+
   const toastColours = {
-    success: { background: '#d3f9d8', border: '#8ce99a', color: '#2f9e44' },
-    info:    { background: '#dde4ff', border: '#748ffc', color: '#3b5bdb' },
-    warning: { background: '#fff9db', border: '#ffe066', color: '#c18a00' },
-    error:   { background: '#ffe3e3', border: '#ffa8a8', color: '#c92a2a' },
+    success: { bg: 'var(--success-50)', border: 'rgba(16,185,129,0.3)', color: 'var(--success)' },
+    info:    { bg: 'var(--primary-50)', border: 'rgba(59,91,219,0.3)',  color: 'var(--primary)' },
+    warning: { bg: 'var(--warning-50)', border: 'rgba(217,119,6,0.3)',  color: 'var(--warning)' },
+    error:   { bg: 'var(--danger-50)',  border: 'rgba(220,38,38,0.3)',  color: 'var(--danger)'  },
   }
 
-  const overlayStyle = {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
-  }
-  const modalBoxStyle = {
-    background: 'white', padding: '30px', borderRadius: '14px',
-    width: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
-  }
+  const overrideRow = overrideId ? attendance.find(s => s.id === overrideId) : null
+
+  // Filter roster
+  const filteredRoster = sessionSearch
+    ? attendance.filter(s =>
+        s.name.toLowerCase().includes(sessionSearch.toLowerCase()) ||
+        s.personId.includes(sessionSearch))
+    : attendance
+
+  const avatarColors = ['#0ca678','#5c3de8','#3b5bdb','#d97706','#be185d','#0284c7','#475569']
 
   return (
-    <div className="dashboard-body">
-      <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
+    <div className="ap-shell">
+      <Sidebar role="Lecturer" navLinks={navLinks} onLogout={onLogout}
+               onSettings={() => setView('settings')} currentUser={currentUser} />
 
-      <main className="main-content">
+      <main className="ap-main">
 
-        {/* ── Toast notification ── */}
+        {view === 'settings' && (
+          <SettingsPage role="Lecturer" currentUser={currentUser} onBack={() => setView('home')} />
+        )}
+        {view !== 'settings' && (<>
+
+        {/* Toast */}
         {toast && (
           <div style={{
-            position: 'fixed', top: '20px', right: '24px', zIndex: 300,
-            padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
-            maxWidth: '340px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            position: 'fixed', top: 20, right: 24, zIndex: 300,
+            padding: '12px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+            maxWidth: 340, boxShadow: 'var(--shadow-md)',
             border: `1px solid ${toastColours[toast.type].border}`,
-            background: toastColours[toast.type].background,
-            color: toastColours[toast.type].color,
-            transition: 'all 0.3s'
+            background: toastColours[toast.type].bg, color: toastColours[toast.type].color,
           }}>
             {toast.message}
           </div>
         )}
 
-        {/* ── Info modal ── */}
+        {/* Info modal */}
         {modal && (
-          <div style={overlayStyle}>
-            <div style={{ ...modalBoxStyle, textAlign: 'center' }}>
-              <div style={{ fontSize: '42px', marginBottom: '12px' }}>{modal.icon}</div>
-              <h3 style={{ color: '#3b5bdb', fontSize: '17px', marginBottom: '12px' }}>{modal.title}</h3>
-              <p style={{ color: '#4a5a8a', fontSize: '13px', lineHeight: 1.7, marginBottom: '22px', whiteSpace: 'pre-line' }}>
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,26,74,0.32)',
+            display: 'grid', placeItems: 'center', zIndex: 200,
+          }} onClick={() => setModal(null)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              width: 400, background: 'var(--surface)', borderRadius: 14,
+              padding: 28, boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--ink-100)',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 12 }}>
+                {modal.title}
+              </div>
+              <p style={{ color: 'var(--ink-500)', fontSize: 13, lineHeight: 1.7, marginBottom: 20, whiteSpace: 'pre-line' }}>
                 {modal.body}
               </p>
-              <button className="btn-secondary-blue" style={{ width: '100%' }} onClick={() => setModal(null)}>
-                OK, Got It
+              <button className="ap-btn primary" style={{ width: '100%', justifyContent: 'center' }}
+                      onClick={() => setModal(null)}>
+                OK
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Override modal ── */}
-        {overrideId !== null && (
-          <div style={overlayStyle}>
-            <div style={modalBoxStyle}>
-              <h3 style={{ color: '#3b5bdb', fontSize: '16px', marginBottom: '16px' }}>
-                Override Attendance — {attendance.find(s => s.id === overrideId)?.name}
-              </h3>
-              <p style={{ color: '#4a5a8a', fontSize: '13px', marginBottom: '14px' }}>
-                Select the correct attendance status for this student:
-              </p>
-              <select
-                value={overrideVal}
-                onChange={e => setOverrideVal(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 12px', border: '1px solid #dde3f0',
-                  borderRadius: '8px', fontSize: '13px', color: '#2b3674',
-                  outline: 'none', marginBottom: '18px', background: 'white'
-                }}
-              >
-                <option value="Present">Present</option>
-                <option value="Late">Late</option>
-                <option value="Absent">Absent</option>
-              </select>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button className="btn-secondary-blue" style={{ flex: 1 }} onClick={handleOverrideSave}>
-                  Save Override
-                </button>
-                <button
-                  style={{
-                    flex: 1, padding: '10px', border: '1px solid #dde3f0', borderRadius: '9px',
-                    cursor: 'pointer', background: 'white', color: '#2b3674',
-                    fontSize: '13px', fontWeight: 600, fontFamily: 'inherit'
-                  }}
-                  onClick={() => setOverrideId(null)}
-                >
-                  Cancel
-                </button>
+        {/* Override modal */}
+        {overrideRow && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,26,74,0.32)',
+            display: 'grid', placeItems: 'center', zIndex: 200,
+          }} onClick={() => setOverrideId(null)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              width: 380, background: 'var(--surface)', borderRadius: 14,
+              padding: 24, boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--ink-100)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <ApAvatar name={overrideRow.name}
+                          color={avatarColors[attendance.indexOf(overrideRow) % avatarColors.length]}
+                          size={36} />
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-900)' }}>{overrideRow.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-400)', fontFamily: 'var(--font-mono)' }}>{overrideRow.personId}</div>
+                </div>
+              </div>
+              <div className="ap-field" style={{ marginBottom: 16 }}>
+                <label>Override status</label>
+                <select className="ap-select" value={overrideVal}
+                        onChange={e => setOverrideVal(e.target.value)}>
+                  <option>Present</option>
+                  <option>Late</option>
+                  <option>Absent</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="ap-btn ghost" style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={() => setOverrideId(null)}>Cancel</button>
+                <button className="ap-btn primary" style={{ flex: 1, justifyContent: 'center' }}
+                        onClick={handleOverrideSave}>Save override</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Header banner */}
-        <header className="portal-header">
-          <h1>Lecturer Dashboard</h1>
-          <p>Raspberry Pi • OpenCV • Secure Sync</p>
-        </header>
+        {/* Add student modal */}
+        {showAddStudent && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,26,74,0.32)',
+            display: 'grid', placeItems: 'center', zIndex: 200,
+          }} onClick={() => setShowAddStudent(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              width: 380, background: 'var(--surface)', borderRadius: 14,
+              padding: 24, boxShadow: 'var(--shadow-lg)', border: '1px solid var(--ink-100)',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink-900)', marginBottom: 18 }}>
+                Add student login
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  { placeholder: 'Full name',         key: 'name',      type: 'text'     },
+                  { placeholder: 'Username',           key: 'username',  type: 'text'     },
+                  { placeholder: 'Temporary password', key: 'password',  type: 'password' },
+                  { placeholder: 'Student ID',         key: 'studentId', type: 'text'     },
+                  { placeholder: 'Email',              key: 'email',     type: 'email'    },
+                ].map(f => (
+                  <input key={f.key} className="ap-input" type={f.type} placeholder={f.placeholder}
+                         value={newStudent[f.key]}
+                         onChange={e => setNewStudent(p => ({ ...p, [f.key]: e.target.value }))} />
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button className="ap-btn ghost" style={{ flex: 1, justifyContent: 'center' }}
+                          onClick={() => setShowAddStudent(false)}>Cancel</button>
+                  <button className="ap-btn primary" style={{ flex: 1, justifyContent: 'center' }}
+                          onClick={handleAddStudent}>Add student</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <div className="card-header">
-            <h3>Add Student Login</h3>
-          </div>
-          <div className="session-bar">
-            <input
-              type="text"
-              placeholder="Student name"
-              value={newStudent.name}
-              onChange={e => setNewStudent(p => ({ ...p, name: e.target.value }))}
-            />
-            <input
-              type="text"
-              placeholder="Username"
-              value={newStudent.username}
-              onChange={e => setNewStudent(p => ({ ...p, username: e.target.value }))}
-            />
-            <input
-              type="password"
-              placeholder="Temporary password"
-              value={newStudent.password}
-              onChange={e => setNewStudent(p => ({ ...p, password: e.target.value }))}
-            />
-            <input
-              type="text"
-              placeholder="Student ID"
-              value={newStudent.studentId}
-              onChange={e => setNewStudent(p => ({ ...p, studentId: e.target.value }))}
-            />
-            <input
-              type="email"
-              placeholder="Email"
-              value={newStudent.email}
-              onChange={e => setNewStudent(p => ({ ...p, email: e.target.value }))}
-            />
-            <button className="btn-secondary-blue" onClick={handleAddStudent}>
-              Add Student
-            </button>
-          </div>
-        </div>
+        {/* Top bar */}
+        <ApTopBar
+          title={courseCode ? `${courseCode} · ${roomSession || 'Session'}` : 'Lecturer Dashboard'}
+          sub={`${currentUser?.name || 'Lecturer'} · ${sessionActive ? 'Session live' : 'No active session'}`}>
+          <ApStatus kind={sessionActive ? 'success' : 'neutral'}>
+            {sessionActive ? 'Session live' : 'Session ended'}
+          </ApStatus>
+          {piLabel() && (
+            <ApStatus kind={piStatus?.online === false ? 'danger' : 'info'} dot={false}>
+              <ApIcon name="cpu" size={12} /> {piLabel()}
+            </ApStatus>
+          )}
+          <button className="ap-btn ghost" onClick={handleExportCSV}>
+            <ApIcon name="download" size={14} /> Export CSV
+          </button>
+          <button className="ap-btn danger" onClick={handleStopSession} disabled={!sessionActive}>
+            <ApIcon name="x" size={14} /> Stop session
+          </button>
+        </ApTopBar>
 
         {/* Session control card */}
-        <div className="card" style={{ marginBottom: '20px' }}>
-          <div className="session-bar">
-            <input
-              type="text"
-              placeholder="Course code (e.g., ICT307)"
-              value={courseCode}
-              onChange={e => setCourseCode(e.target.value)}
-            />
-            <input
-              type="text"
-              placeholder="Room / Session"
-              value={roomSession}
-              onChange={e => setRoomSession(e.target.value)}
-            />
-            <button className="btn-secondary-blue" onClick={handleStartSession}>
-              {sessionActive ? '✓ Session Active' : 'Start Session'}
-            </button>
-            <button className="btn-stop" onClick={handleStopSession}>
-              Stop Session
-            </button>
-            <button className="btn-export" onClick={handleExportCSV}>
-              Export CSV
-            </button>
-
-            <div className="sync-badges">
-              <span className="sync-badge-yellow">Pending Sync: {pendingSync}</span>
-              <span className="sync-badge-green">Synced: {synced}</span>
-              <button className="btn-sync-now" onClick={handleSyncNow}>Sync Now</button>
+        <div className="ap-card">
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="ap-field" style={{ width: 180 }}>
+              <label>Course code</label>
+              <input className="ap-input" placeholder="e.g. ICT307"
+                     value={courseCode} onChange={e => setCourseCode(e.target.value)} />
             </div>
-          </div>
-
-          {/* Pi status bar */}
-          <div style={{
-            marginTop: '12px', padding: '8px 14px', borderRadius: '8px',
-            background: piStatus?.online === false ? '#fff5f5' : '#f3f9ff',
-            border: `1px solid ${piStatus?.online === false ? '#ffa8a8' : '#bcd0f7'}`,
-            fontSize: '12px', fontWeight: 600,
-            color: piStatus?.online === false ? '#c92a2a' : '#3b5bdb',
-          }}>
-            {piStatusLabel()}
+            <div className="ap-field" style={{ width: 200 }}>
+              <label>Room / Session</label>
+              <input className="ap-input" placeholder="e.g. L2-04 Lecture"
+                     value={roomSession} onChange={e => setRoomSession(e.target.value)} />
+            </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <span className="ap-pill neutral">Pending: {pendingSync}</span>
+                <span className="ap-pill success">Synced: {synced}</span>
+              </div>
+              <button className="ap-btn subtle" onClick={handleSyncNow}>
+                <ApIcon name="wifi" size={14} /> Sync now
+              </button>
+              <button className="ap-btn primary" onClick={handleStartSession} disabled={sessionActive}>
+                {sessionActive ? 'Session active' : 'Start session'}
+              </button>
+              <button className="ap-btn ghost" onClick={() => setShowAddStudent(true)}>
+                <ApIcon name="plus" size={14} /> Add student
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Real-time Attendance */}
-        <div className="card" style={{ marginBottom: '0' }}>
-          <div className="card-header">
-            <h3>Real-time Attendance</h3>
-            <span className="attendance-meta">
-              Total: {totalStudents} • Present: {presentCount} • Absent: {absentCount}
-            </span>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Course</th>
-                <th>Student ID</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th>Time</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {attendance.length === 0 && (
-                <tr><td colSpan="7" style={{ textAlign: 'center', color: '#a3aed0', padding: '20px' }}>No records yet — waiting for Pi scans…</td></tr>
-              )}
-              {attendance.map(s => (
-                <tr key={s.id}>
-                  <td>{s.name}</td>
-                  <td style={{ color: '#4a5a8a', fontSize: '12px' }}>{s.course}</td>
-                  <td style={{ fontSize: '12px', color: '#a3aed0', fontFamily: 'monospace' }}>{s.personId}</td>
-                  <td className={
-                    s.status === 'Present'  ? 'text-present' :
-                    s.status === 'Absent'   ? 'text-absent'  :
-                    s.status === 'Late'     ? 'text-late'    :
-                    s.status === 'Scanning…'? 'text-late'    : 'text-not-recognized'
-                  }>
-                    {s.status}
-                  </td>
-                  <td style={{ fontSize: '12px', color: '#a3aed0' }}>{s.date || '—'}</td>
-                  <td>{s.time}</td>
-                  <td>
-                    {s.recognized ? (
-                      <>
-                        <button className="btn-override" onClick={() => handleOverrideOpen(s.id)}>Override</button>
-                        <button className="btn-details"  onClick={() => handleDetails(s.id)}>Details</button>
-                      </>
-                    ) : (
-                      <>
-                        <button className="btn-retry" onClick={() => handleRetry(s.id)}>Retry</button>
-                        <button className="btn-mark"  onClick={() => handleMarkPresent(s.id)}>Mark Present</button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* KPI strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
+          <ApKpi label="Enrolled" value={totalStudents} sub="in roster" />
+          <ApKpi label="Present" value={presentCount}
+                 delta={totalStudents > 0 ? `${Math.round(presentCount/Math.max(totalStudents,1)*100)}%` : '0%'}
+                 deltaDir="up" accent="var(--success)" />
+          <ApKpi label="Late" value={lateCount} sub="after threshold" accent="var(--warning)" />
+          <ApKpi label="Absent" value={absentCount} sub="no scan yet" accent="var(--danger)" />
+          <ApKpi label="Needs review" value={needsReview} sub="confidence &lt; 70%" />
+        </div>
 
-          {/* Session Notes + Alerts */}
-          <div className="session-bottom-grid">
-            <div className="card" style={{ boxShadow: 'none', border: '1px solid #e8edf5' }}>
-              <div className="card-header">
-                <h3>Session Notes</h3>
+        {/* Main grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 16 }}>
+
+          {/* Live roster */}
+          <div className="ap-card padless">
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '16px 20px 12px',
+            }}>
+              <div>
+                <div className="ap-card-title">Live roster</div>
+                <div className="ap-card-sub">Updates from Pi in real time</div>
               </div>
-              <textarea
-                className="session-notes-textarea"
-                placeholder="Notes for this class..."
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className="ap-input-wrap" style={{ width: 220 }}>
+                  <ApIcon name="search" size={14} />
+                  <input className="ap-input" placeholder="Search student or ID…"
+                         value={sessionSearch} onChange={e => setSessionSearch(e.target.value)} />
+                </div>
+                <button className="ap-btn ghost sm">
+                  <ApIcon name="filter" size={13} /> Filter
+                </button>
+              </div>
+            </div>
+
+            <table className="ap-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>ID</th>
+                  <th>Status</th>
+                  <th>Check-in</th>
+                  <th>Confidence</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRoster.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--ink-300)', padding: 24 }}>
+                      No records yet — waiting for Pi scans…
+                    </td>
+                  </tr>
+                ) : filteredRoster.map((s, i) => (
+                  <tr key={s.id}>
+                    <td>
+                      <div className="ap-row-name">
+                        <ApAvatar name={s.name} color={avatarColors[i % avatarColors.length]} size={30} />
+                        <div style={{ color: 'var(--ink-900)', fontWeight: 600 }}>{s.name}</div>
+                      </div>
+                    </td>
+                    <td className="mono">{s.personId}</td>
+                    <td>{statusPill(s.status)}</td>
+                    <td className="mono">{s.time}</td>
+                    <td style={{ minWidth: 130 }}>
+                      {s.confidence != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div className="ap-bar" style={{ width: 70 }}>
+                            <span style={{
+                              width: s.confidence + '%',
+                              background: s.confidence >= 90 ? 'var(--success)' :
+                                          s.confidence >= 70 ? 'var(--warning)' : 'var(--danger)',
+                            }} />
+                          </div>
+                          <span className="mono" style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{s.confidence}%</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--ink-300)' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 6 }}>
+                        {s.recognized ? (
+                          <>
+                            <button className="ap-btn ghost xs" onClick={() => handleOverrideOpen(s.id)}>Override</button>
+                            <button className="ap-btn subtle xs" onClick={() => handleDetails(s.id)}>Details</button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="ap-btn ghost xs" onClick={() => handleRetry(s.id)}>Retry</button>
+                            <button className="ap-btn primary xs" onClick={() => handleMarkPresent(s.id)}>Mark present</button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{
+              padding: '10px 20px', borderTop: '1px solid var(--ink-100)',
+              fontSize: 12, color: 'var(--ink-400)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span>Showing {filteredRoster.length} of {totalStudents} in roster</span>
+              <span>Last sync · just now</span>
+            </div>
+          </div>
+
+          {/* Right column: notes + alerts */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Session notes */}
+            <div className="ap-card">
+              <div className="ap-card-head">
+                <div>
+                  <div className="ap-card-title">Session notes</div>
+                  <div className="ap-card-sub">Auto-saves · attached to this session</div>
+                </div>
+                {notesSaved && (
+                  <ApStatus kind="success" dot={false}>
+                    <ApIcon name="check" size={12} /> Saved
+                  </ApStatus>
+                )}
+              </div>
+              <textarea className="ap-textarea" rows={5}
+                placeholder="Notes for this class…"
                 value={notes}
                 onChange={e => { setNotes(e.target.value); setNotesSaved(false) }}
-              />
-              <button
-                className="btn-secondary-blue"
-                onClick={handleSaveNotes}
-                disabled={savingNotes}
-                style={{ opacity: savingNotes ? 0.7 : 1 }}
-              >
-                {savingNotes ? 'Saving…' : notesSaved ? '✓ Saved to Database!' : 'Save Notes'}
-              </button>
+                style={{ resize: 'none', fontSize: 13, lineHeight: 1.5 }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="ap-btn primary" onClick={handleSaveNotes} disabled={savingNotes}>
+                  <ApIcon name="check" size={14} /> {savingNotes ? 'Saving…' : 'Save notes'}
+                </button>
+              </div>
 
               {savedNotes.length > 0 && (
-                <div style={{ marginTop: '16px' }}>
-                  <p style={{ fontSize: '12px', color: '#a3aed0', marginBottom: '8px', fontWeight: 600 }}>
-                    PREVIOUSLY SAVED NOTES
-                  </p>
-                  {savedNotes.map((n, i) => (
+                <div style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-300)', fontWeight: 700, marginBottom: 8 }}>
+                    Previously saved
+                  </div>
+                  {savedNotes.slice(0, 3).map((n, i) => (
                     <div key={n._id || i} style={{
-                      background: '#f8f9ff', border: '1px solid #e8edf5',
-                      borderRadius: '8px', padding: '10px 12px', marginBottom: '8px'
+                      background: 'var(--surface-2)', border: '1px solid var(--ink-100)',
+                      borderRadius: 8, padding: '8px 10px', marginBottom: 6,
                     }}>
-                      <p style={{ fontSize: '12px', color: '#a3aed0', marginBottom: '4px' }}>
-                        {new Date(n.createdAt).toLocaleString()} — {n.courseCode || 'ICT307'} / {n.session || 'Lecture'}
+                      <p style={{ fontSize: 11, color: 'var(--ink-400)', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
+                        {new Date(n.createdAt).toLocaleString()} · {n.courseCode || 'ICT307'}
                       </p>
-                      <p style={{ fontSize: '13px', color: '#2b3674', margin: 0, whiteSpace: 'pre-wrap' }}>
+                      <p style={{ fontSize: 12.5, color: 'var(--ink-700)', margin: 0, whiteSpace: 'pre-wrap' }}>
                         {n.notes}
                       </p>
                     </div>
@@ -613,22 +662,53 @@ function LecturerPortal({ currentUser, onLogout }) {
               )}
             </div>
 
-            <div className="card" style={{ boxShadow: 'none', border: '1px solid #e8edf5' }}>
-              <div className="card-header">
-                <h3>Alerts</h3>
+            {/* Alerts */}
+            <div className="ap-card">
+              <div className="ap-card-head">
+                <div>
+                  <div className="ap-card-title">Alerts</div>
+                  <div className="ap-card-sub">From this session</div>
+                </div>
+                {alerts.length > 0 && (
+                  <span className="ap-pill warning">{alerts.length} new</span>
+                )}
               </div>
+
               {alerts.length === 0 ? (
-                <p style={{ color: '#a3aed0', fontSize: '13px', padding: '8px 0' }}>No unrecognised faces — all clear.</p>
-              ) : alerts.map((a, i) => (
-                <p key={a.id || i} className="alert-item">
-                  {a.message}<span>{a.highlight}</span>
-                  {a.device && <span style={{ color: '#a3aed0', fontSize: '11px', marginLeft: '6px' }}>({a.device})</span>}
+                <p style={{ color: 'var(--ink-300)', fontSize: 13, padding: '4px 0' }}>
+                  No unrecognised faces — all clear.
                 </p>
-              ))}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {alerts.slice(0, 5).map((a, i) => (
+                    <div key={a.id || i} style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start',
+                      padding: 10, border: '1px solid var(--ink-100)',
+                      borderRadius: 10, background: 'var(--surface-2)',
+                    }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8,
+                        display: 'grid', placeItems: 'center', flexShrink: 0,
+                        background: a.tint === 'warning' ? 'var(--warning-50)' :
+                                    a.tint === 'info'    ? 'var(--primary-50)' : 'var(--ink-50)',
+                        color: a.tint === 'warning' ? 'var(--warning)' :
+                               a.tint === 'info'    ? 'var(--primary)' : 'var(--ink-500)',
+                      }}>
+                        <ApIcon name={a.icon || 'alert'} size={14} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{a.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-400)', marginTop: 2 }}>{a.body}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
+        </>)}
       </main>
     </div>
   )
