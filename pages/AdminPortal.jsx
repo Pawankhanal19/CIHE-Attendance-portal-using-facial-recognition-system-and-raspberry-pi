@@ -5,7 +5,11 @@ const initialUsers = [
   { id: 2, name: 'Dr. Sarah Johnson', role: 'Lecturer', email: 'sj@example.com' },
 ]
 
+<<<<<<< HEAD
 function AdminPortal({ onLogout }) {
+=======
+function AdminPortal({ currentUser, onLogout }) {
+>>>>>>> my-project
   const [users,        setUsers]        = React.useState(initialUsers)
   const [search,       setSearch]       = React.useState('')
   const [roleFilter,   setRoleFilter]   = React.useState('All')
@@ -13,8 +17,15 @@ function AdminPortal({ onLogout }) {
   const [newUser,      setNewUser]      = React.useState({ name: '', username: '', password: '', role: 'Student', email: '', studentId: '' })
   const [editingId,    setEditingId]    = React.useState(null)
   const [editUser,     setEditUser]     = React.useState({})
+<<<<<<< HEAD
   const [infoModal,    setInfoModal]    = React.useState(null) // { title, message, icon }
   const [systemHealth, setSystemHealth] = React.useState(null)
+=======
+  const [infoModal,    setInfoModal]    = React.useState(null)
+  const [systemHealth, setSystemHealth] = React.useState(null)
+  const [logsModal,    setLogsModal]    = React.useState(null)   // array of log objects
+  const [analytics,    setAnalytics]    = React.useState(null)   // analytics object
+>>>>>>> my-project
 
   const navLinks = [{ label: 'Home', href: '#' }]
 
@@ -56,6 +67,7 @@ function AdminPortal({ onLogout }) {
     }
   }, [])
 
+<<<<<<< HEAD
   function handleViewLogs() {
     showInfo(
       'System Logs',
@@ -78,6 +90,60 @@ function AdminPortal({ onLogout }) {
       'Could not display the compliance report at this moment. Please ensure the backend server is running and try again.',
       '📄'
     )
+=======
+  async function handleViewLogs() {
+    try {
+      const data = await AttendanceAPI.fetchAnalytics()
+      setLogsModal(data.recentLogs || [])
+    } catch (error) {
+      showInfo('System Logs', 'Could not load logs. Please ensure the backend server is running.', '📋')
+    }
+  }
+
+  async function handleAttendanceAnalytics() {
+    try {
+      const data = await AttendanceAPI.fetchAnalytics()
+      setAnalytics(data)
+    } catch (error) {
+      showInfo('Attendance Analytics', 'Could not load analytics. Please ensure the backend server is running.', '📊')
+    }
+  }
+
+  async function handleComplianceReport() {
+    try {
+      const data = await AttendanceAPI.fetchAnalytics()
+      const logs = data.recentLogs || []
+      if (logs.length === 0) {
+        showInfo('Compliance Report', 'No attendance records found to generate a report.', '📄')
+        return
+      }
+      const rows = [['Name', 'Student ID', 'Course', 'Session', 'Status', 'Date', 'Time', 'Device']]
+      logs.forEach(l => {
+        const d = new Date(l.time || l.created_at)
+        rows.push([
+          l.name,
+          l.person_id || '—',
+          l.course_code || '—',
+          l.session || '—',
+          l.attendance_status || l.status,
+          d.toLocaleDateString('en-GB'),
+          d.toTimeString().slice(0, 5),
+          l.device_id || '—',
+        ])
+      })
+      const csv  = rows.map(r => r.join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `compliance_report_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      showInfo('Compliance Report', `Report downloaded — ${logs.length} records exported successfully.`, '📄')
+    } catch (error) {
+      showInfo('Compliance Report', 'Could not generate report. Please ensure the backend server is running.', '📄')
+    }
+>>>>>>> my-project
   }
 
   // ── User management helpers ─────────────────────────────────
@@ -156,7 +222,11 @@ function AdminPortal({ onLogout }) {
 
   return (
     <div className="dashboard-body">
+<<<<<<< HEAD
       <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} />
+=======
+      <Sidebar role="Admin" navLinks={navLinks} onLogout={onLogout} currentUser={currentUser} />
+>>>>>>> my-project
 
       <main className="main-content">
 
@@ -214,6 +284,78 @@ function AdminPortal({ onLogout }) {
           </div>
         )}
 
+<<<<<<< HEAD
+=======
+        {/* ── View Logs modal ── */}
+        {logsModal && (
+          <div style={overlayStyle} onClick={() => setLogsModal(null)}>
+            <div style={{ ...modalBoxStyle, width: '780px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ color: '#3b5bdb', fontSize: '17px', marginBottom: '16px' }}>📋 System Attendance Logs</h3>
+              {logsModal.length === 0 ? (
+                <p style={{ color: '#a3aed0', textAlign: 'center', padding: '20px' }}>No attendance logs found.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#f8f9ff' }}>
+                      {['Name', 'Course', 'Status', 'Attendance', 'Device', 'Time'].map(h => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: '#2b3674', borderBottom: '1px solid #e8edf5' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logsModal.map((l, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '8px 10px', color: '#2b3674' }}>{l.name}</td>
+                        <td style={{ padding: '8px 10px', color: '#4a5a8a' }}>{l.course_code || '—'}</td>
+                        <td style={{ padding: '8px 10px', color: l.status === 'recognised' ? '#2f9e44' : '#c92a2a' }}>{l.status}</td>
+                        <td style={{ padding: '8px 10px', color: l.attendance_status === 'Present' ? '#2f9e44' : l.attendance_status === 'Late' ? '#c18a00' : '#c92a2a' }}>{l.attendance_status}</td>
+                        <td style={{ padding: '8px 10px', color: '#a3aed0', fontSize: '12px' }}>{l.device_id}</td>
+                        <td style={{ padding: '8px 10px', color: '#a3aed0', fontSize: '12px' }}>{new Date(l.time).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <button className="btn-add-user" style={{ width: '100%', marginTop: '16px' }} onClick={() => setLogsModal(null)}>Close</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Analytics modal ── */}
+        {analytics && (
+          <div style={overlayStyle} onClick={() => setAnalytics(null)}>
+            <div style={{ ...modalBoxStyle, width: '500px' }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ color: '#3b5bdb', fontSize: '17px', marginBottom: '20px' }}>📊 Attendance Analytics</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                {[
+                  { label: 'Total Records', value: analytics.total, color: '#3b5bdb' },
+                  { label: 'Present', value: analytics.present, color: '#2f9e44' },
+                  { label: 'Late', value: analytics.late, color: '#c18a00' },
+                  { label: 'Absent / Denied', value: (analytics.absent || 0) + (analytics.denied || 0), color: '#c92a2a' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ background: '#f8f9ff', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+                    <p style={{ fontSize: '28px', fontWeight: 700, color: stat.color, margin: 0 }}>{stat.value}</p>
+                    <p style={{ fontSize: '12px', color: '#a3aed0', margin: '4px 0 0' }}>{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+              {analytics.byCourse?.length > 0 && (
+                <>
+                  <p style={{ fontSize: '13px', fontWeight: 600, color: '#2b3674', marginBottom: '10px' }}>By Course</p>
+                  {analytics.byCourse.map(c => (
+                    <div key={c._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0f0f0', fontSize: '13px' }}>
+                      <span style={{ color: '#2b3674' }}>{c._id || 'Unknown'}</span>
+                      <span style={{ color: '#a3aed0' }}>{c.present}/{c.total} present</span>
+                    </div>
+                  ))}
+                </>
+              )}
+              <button className="btn-add-user" style={{ width: '100%', marginTop: '20px' }} onClick={() => setAnalytics(null)}>Close</button>
+            </div>
+          </div>
+        )}
+
+>>>>>>> my-project
         {/* ── Add User modal ── */}
         {showAddModal && (
           <div style={overlayStyle}>

@@ -70,9 +70,41 @@ const attendanceLogSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
+<<<<<<< HEAD
 const User = mongoose.model('User', userSchema)
 const Device = mongoose.model('Device', deviceSchema)
 const AttendanceLog = mongoose.model('AttendanceLog', attendanceLogSchema)
+=======
+const classSessionSchema = new mongoose.Schema(
+  {
+    courseCode:   { type: String, required: true, trim: true },
+    room:         { type: String, trim: true },
+    lecturerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    lecturerName: { type: String, trim: true },
+    startTime:    { type: Date, required: true, default: Date.now },
+    endTime:      { type: Date },
+    status:       { type: String, enum: ['active', 'ended'], default: 'active' },
+  },
+  { timestamps: true }
+)
+
+const sessionNoteSchema = new mongoose.Schema(
+  {
+    courseCode: { type: String, trim: true, default: 'ICT307' },
+    session: { type: String, trim: true, default: 'Lecture' },
+    notes: { type: String, required: true },
+    lecturerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    lecturerName: { type: String, trim: true },
+  },
+  { timestamps: true }
+)
+
+const User = mongoose.model('User', userSchema)
+const Device = mongoose.model('Device', deviceSchema)
+const AttendanceLog = mongoose.model('AttendanceLog', attendanceLogSchema)
+const SessionNote = mongoose.model('SessionNote', sessionNoteSchema)
+const ClassSession = mongoose.model('ClassSession', classSessionSchema)
+>>>>>>> my-project
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex')
@@ -348,6 +380,213 @@ app.get('/api/devices', async (req, res) => {
   res.json(devices)
 })
 
+<<<<<<< HEAD
+=======
+app.put('/api/recognition-logs/:id', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const { attendanceStatus } = req.body
+  if (!['Present', 'Late', 'Absent', 'Denied'].includes(attendanceStatus)) {
+    return res.status(400).json({ message: 'Invalid attendance status.' })
+  }
+  const log = await AttendanceLog.findByIdAndUpdate(
+    req.params.id,
+    { attendanceStatus, status: 'manual' },
+    { new: true }
+  )
+  if (!log) return res.status(404).json({ message: 'Log not found.' })
+  const clientLog = toClientLog(log)
+  io.emit('attendance_updated', clientLog)
+  res.json(clientLog)
+})
+
+app.get('/api/analytics', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const [total, present, late, absent, denied, byCourse, recentLogs] = await Promise.all([
+    AttendanceLog.countDocuments(),
+    AttendanceLog.countDocuments({ attendanceStatus: 'Present' }),
+    AttendanceLog.countDocuments({ attendanceStatus: 'Late' }),
+    AttendanceLog.countDocuments({ attendanceStatus: 'Absent' }),
+    AttendanceLog.countDocuments({ attendanceStatus: 'Denied' }),
+    AttendanceLog.aggregate([
+      { $group: { _id: '$courseCode', total: { $sum: 1 }, present: { $sum: { $cond: [{ $eq: ['$attendanceStatus', 'Present'] }, 1, 0] } } } },
+      { $sort: { total: -1 } },
+      { $limit: 10 },
+    ]),
+    AttendanceLog.find().sort({ timestamp: -1 }).limit(50),
+  ])
+  res.json({ total, present, late, absent, denied, byCourse, recentLogs: recentLogs.map(toClientLog) })
+})
+
+app.post('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const { courseCode, room } = req.body
+  if (!courseCode || !courseCode.trim()) {
+    return res.status(400).json({ message: 'Course code is required to start a session.' })
+  }
+
+  await ClassSession.updateMany(
+    { lecturerId: req.auth.id, status: 'active' },
+    { status: 'ended', endTime: new Date() }
+  )
+
+  const lecturer = await User.findById(req.auth.id)
+  const session = await ClassSession.create({
+    courseCode: courseCode.trim(),
+    room: room?.trim() || '',
+    lecturerId: req.auth.id,
+    lecturerName: lecturer?.name || req.auth.username,
+    startTime: new Date(),
+  })
+
+  res.status(201).json(session)
+})
+
+app.put('/api/sessions/:id/stop', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const session = await ClassSession.findOneAndUpdate(
+    { _id: req.params.id, lecturerId: req.auth.id },
+    { status: 'ended', endTime: new Date() },
+    { new: true }
+  )
+  if (!session) return res.status(404).json({ message: 'Session not found.' })
+  res.json(session)
+})
+
+app.get('/api/sessions', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 100)
+  const query = req.auth.role === 'Lecturer' ? { lecturerId: req.auth.id } : {}
+  const sessions = await ClassSession.find(query).sort({ startTime: -1 }).limit(limit)
+  res.json(sessions)
+})
+
+app.post('/api/session-notes', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const { notes, courseCode, session } = req.body
+  if (!notes || !notes.trim()) {
+    return res.status(400).json({ message: 'Notes cannot be empty.' })
+  }
+
+  const lecturer = await User.findById(req.auth.id)
+  const note = await SessionNote.create({
+    notes: notes.trim(),
+    courseCode: courseCode || 'ICT307',
+    session: session || 'Lecture',
+    lecturerId: req.auth.id,
+    lecturerName: lecturer?.name || req.auth.username,
+  })
+
+  res.status(201).json(note)
+})
+
+app.get('/api/session-notes', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 100)
+  const query = {}
+  if (req.query.course_code) query.courseCode = req.query.course_code
+  if (req.auth.role === 'Lecturer') query.lecturerId = req.auth.id
+
+  const notes = await SessionNote.find(query).sort({ createdAt: -1 }).limit(limit)
+  res.json(notes)
+})
+
+app.get('/api/weekly-attendance', requireAuth, async (req, res) => {
+  const personId = req.query.person_id
+  if (!personId) return res.status(400).json({ message: 'person_id query parameter is required.' })
+
+  const HOURS_PER_SESSION = 3
+
+  const [myLogs, allLogs] = await Promise.all([
+    AttendanceLog.find({ personId }).sort({ timestamp: 1 }).lean(),
+    AttendanceLog.find({}).select('timestamp').lean(),
+  ])
+
+  if (myLogs.length === 0) return res.json([])
+
+  // Any day where ANY student was recognised counts as a class day
+  const classDaySet = new Set(allLogs.map(l => new Date(l.timestamp).toISOString().slice(0, 10)))
+
+  // Map of dates this student attended: YYYY-MM-DD → hours attended
+  const myDayMap = {}
+  for (const log of myLogs) {
+    const dk = new Date(log.timestamp).toISOString().slice(0, 10)
+    if (log.attendanceStatus === 'Present' || log.attendanceStatus === 'Late') {
+      myDayMap[dk] = HOURS_PER_SESSION  // one class per day — multiple scans don't stack
+    } else if (!myDayMap[dk]) {
+      myDayMap[dk] = 0
+    }
+  }
+
+  function getMonday(date) {
+    const d = new Date(date)
+    const day = d.getDay()
+    d.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+    d.setHours(0, 0, 0, 0)
+    return d
+  }
+
+  function fmtDate(d) {
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+  }
+
+  const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  const weeks = []
+  let cumAttd = 0, cumClass = 0
+
+  let cursor = getMonday(new Date(myLogs[0].timestamp))
+  const todayMonday = getMonday(new Date())
+
+  while (cursor <= todayMonday) {
+    const wStart = new Date(cursor)
+    const wEnd   = new Date(cursor)
+    wEnd.setDate(wEnd.getDate() + 6)
+
+    const days = {}
+    let weeklyAttd = 0, weeklyClass = 0
+
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(wStart)
+      day.setDate(day.getDate() + i)
+      const dk = day.toISOString().slice(0, 10)
+
+      if (classDaySet.has(dk)) {
+        weeklyClass += HOURS_PER_SESSION
+        days[DAY_KEYS[i]] = myDayMap[dk] ?? 0
+        weeklyAttd += myDayMap[dk] ?? 0
+      } else {
+        days[DAY_KEYS[i]] = 'NC'
+      }
+    }
+
+    cumAttd  += weeklyAttd
+    cumClass += weeklyClass
+
+    weeks.push({
+      term: 1,
+      weekRange: `${fmtDate(wStart)} - ${fmtDate(wEnd)}`,
+      days,
+      studyHrs:        weeklyAttd,
+      otherHrs:        0,
+      weeklyAttdHrs:   weeklyAttd,
+      weeklyClassHrs:  weeklyClass,
+      weeklyAttdPct:   weeklyClass > 0 ? Math.round(weeklyAttd / weeklyClass * 10000) / 100 : null,
+      semesterCurrAttd: cumClass > 0  ? Math.round(cumAttd  / cumClass  * 10000) / 100 : null,
+      _cumAttd:  cumAttd,
+      _cumClass: cumClass,
+    })
+
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  // Semester Proj. Attd. — if student attends 100% of remaining weeks, max possible %
+  const avgWeeklyClass = weeks.reduce((s, w) => s + w.weeklyClassHrs, 0) / weeks.length || HOURS_PER_SESSION * 3
+  for (let i = 0; i < weeks.length; i++) {
+    const futureClass    = (weeks.length - 1 - i) * avgWeeklyClass
+    const totalPossible  = weeks[i]._cumClass + futureClass
+    weeks[i].semesterProjAttd = totalPossible > 0
+      ? Math.round((weeks[i]._cumAttd + futureClass) / totalPossible * 10000) / 100
+      : null
+    delete weeks[i]._cumAttd
+    delete weeks[i]._cumClass
+  }
+
+  res.json(weeks)
+})
+
+>>>>>>> my-project
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(500).json({ message: 'Server error.', detail: err.message })

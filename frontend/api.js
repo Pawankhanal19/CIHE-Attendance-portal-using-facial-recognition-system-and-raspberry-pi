@@ -90,6 +90,48 @@ const AttendanceAPI = {
     return this.request('/api/health')
   },
 
+<<<<<<< HEAD
+=======
+  fetchWeeklyAttendance(personId) {
+    return this.request(`/api/weekly-attendance?person_id=${encodeURIComponent(personId)}`)
+  },
+
+  updateAttendanceLog(id, data) {
+    return this.request(`/api/recognition-logs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  fetchAnalytics() {
+    return this.request('/api/analytics')
+  },
+
+  startSession(courseCode, room) {
+    return this.request('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ courseCode, room }),
+    })
+  },
+
+  stopSession(id) {
+    return this.request(`/api/sessions/${id}/stop`, { method: 'PUT' })
+  },
+
+  saveSessionNote(notes, courseCode, session) {
+    return this.request('/api/session-notes', {
+      method: 'POST',
+      body: JSON.stringify({ notes, courseCode, session }),
+    })
+  },
+
+  fetchSessionNotes(courseCode) {
+    const params = new URLSearchParams()
+    if (courseCode) params.set('course_code', courseCode)
+    return this.request(`/api/session-notes?${params.toString()}`)
+  },
+
+>>>>>>> my-project
   connectSocket() {
     if (!window.io) return null
     return window.io(API_BASE_URL)
