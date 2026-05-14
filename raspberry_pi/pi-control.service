@@ -1,0 +1,19 @@
+[Unit]
+Description=Pi Face Recognition Control Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Change "pi" to your actual username if different (check with: whoami)
+User=pi
+WorkingDirectory=/home/pi/face_attendance
+ExecStart=/home/pi/face_attendance/venv/bin/python /home/pi/face_attendance/pi_control_server.py
+Restart=always
+RestartSec=10
+# Log output: view with: journalctl -u pi-control.service -f
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

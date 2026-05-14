@@ -1,1 +1,13 @@
+# Install inside your venv:  pip install -r requirements.txt
+
+# HTTP client (recognition script + api_client)
 requests==2.32.3
+
+# Flask control server
+flask>=3.0.0
+
+# System stats (CPU %, memory %, temperature) for /control/status
+psutil>=5.9.0
+
+# .env loading
+python-dotenv>=1.0.0
