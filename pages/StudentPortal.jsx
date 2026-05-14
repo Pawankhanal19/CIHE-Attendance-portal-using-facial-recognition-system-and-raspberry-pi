@@ -29,7 +29,18 @@ function StudentPortal({ currentUser, onLogout }) {
   const [weeklyData,    setWeeklyData]    = React.useState([])
   const [weeklyLoading, setWeeklyLoading] = React.useState(false)
   const [streamOk,      setStreamOk]      = React.useState(null) // null=loading, true, false
+  const [streamKey,     setStreamKey]     = React.useState(0)   // increment to force img remount
   const streamUrl = React.useMemo(() => AttendanceAPI.getPiStreamUrl(), [])
+
+  // Auto-retry stream every 12 s when offline
+  React.useEffect(() => {
+    if (streamOk !== false) return
+    const t = setTimeout(() => {
+      setStreamOk(null)
+      setStreamKey(k => k + 1)
+    }, 12000)
+    return () => clearTimeout(t)
+  }, [streamOk])
 
   const navLinks = [
     { label: 'Home',          href: '#' },
@@ -258,37 +269,38 @@ function StudentPortal({ currentUser, onLogout }) {
                   </ApStatus>
                 </div>
 
-                <div className="ap-camera" style={{ height: 260 }}>
-                  <div className="ap-camera-corner tl" />
-                  <div className="ap-camera-corner tr" />
-                  <div className="ap-camera-corner bl" />
-                  <div className="ap-camera-corner br" />
+                <div style={{
+                  position: 'relative',
+                  width: '100%',
+                  aspectRatio: '4/3',
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  background: '#0a0f1e',
+                }}>
                   {scanning && <div className="ap-scan-line" />}
 
                   {/* Live Pi stream */}
                   {streamUrl && streamOk !== false && (
                     <img
+                      key={streamKey}
                       src={streamUrl}
                       alt="Pi camera"
-                      onLoad={() => setStreamOk(true)}
                       onError={() => setStreamOk(false)}
                       style={{
                         position: 'absolute', inset: 0,
                         width: '100%', height: '100%',
-                        objectFit: 'cover', borderRadius: 'inherit',
-                        opacity: streamOk ? 1 : 0,
-                        transition: 'opacity 0.4s',
+                        objectFit: 'cover',
                       }}
                     />
                   )}
 
-                  {/* Overlay: success / scanning / offline placeholder */}
-                  {(scanState !== 'idle' || streamOk !== true) && (
+                  {/* Success / scanning overlay — only when there's a state to show */}
+                  {scanState !== 'idle' && (
                     <div style={{
                       position: 'absolute', inset: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexDirection: 'column', gap: 10, zIndex: 1,
-                      background: scanState !== 'idle' ? 'rgba(0,0,0,0.45)' : 'transparent',
+                      background: 'rgba(0,0,0,0.52)',
                       pointerEvents: 'none',
                     }}>
                       {scanState === 'success' ? (
@@ -302,45 +314,21 @@ function StudentPortal({ currentUser, onLogout }) {
                           }}>
                             <ApIcon name="check" size={32} stroke={2.2} />
                           </div>
-                          <div style={{ fontWeight: 600, fontSize: 14 }}>
+                          <div style={{ fontWeight: 600, fontSize: 15, color: '#fff' }}>
                             Face recognised · {currentUser?.name?.split(' ')[0] || 'Student'}
                           </div>
                           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-mono)' }}>
                             Confidence 95% · ICT307 · {new Date().toTimeString().slice(0, 5)}
                           </div>
                         </>
-                      ) : scanning ? (
+                      ) : (
                         <>
                           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Hold still…</div>
-                          <div style={{ fontWeight: 600, fontSize: 14 }}>Scanning face</div>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: '#fff' }}>Scanning face</div>
                         </>
-                      ) : streamOk !== true ? (
-                        <>
-                          <ApIcon name="camera" size={42} color="rgba(255,255,255,0.4)" stroke={1.2} />
-                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>
-                            {streamOk === false ? 'Pi camera offline' : 'Connecting to camera…'}
-                          </div>
-                        </>
-                      ) : null}
+                      )}
                     </div>
                   )}
-
-                  {/* Pi chip overlay */}
-                  <div style={{
-                    position: 'absolute', left: 12, bottom: 12, zIndex: 2,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    background: 'rgba(15,26,74,0.55)', backdropFilter: 'blur(4px)',
-                    padding: '5px 10px', borderRadius: 999,
-                    fontSize: 11, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-mono)',
-                  }}>
-                    <span style={{
-                      width: 5, height: 5, borderRadius: '50%',
-                      background: streamOk ? '#34d399' : '#f87171',
-                      boxShadow: `0 0 0 2px ${streamOk ? 'rgba(52,211,153,0.25)' : 'rgba(248,113,113,0.25)'}`,
-                      display: 'inline-block',
-                    }} />
-                    {streamOk ? 'pi-cam · live' : 'pi-cam · offline'}
-                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
