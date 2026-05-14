@@ -517,6 +517,32 @@ app.get('/api/sessions/pi-status', requireAuth, requireRoles(['Admin', 'Lecturer
   }
 })
 
+// ── Pi camera stream proxy ──────────────────────────────────────────────────
+// <img> tags can't send Authorization headers, so we accept the token as ?token=
+
+app.get('/api/pi/stream', async (req, res) => {
+  const token = req.query.token || ''
+  if (!verifyToken(token)) return res.status(401).send('Unauthorized')
+
+  if (!PI_CONTROL_URL || !PI_CONTROL_KEY) {
+    return res.status(503).send('Pi not configured')
+  }
+
+  try {
+    const piResp = await axios.get(`${PI_CONTROL_URL}/control/stream`, {
+      headers: { 'x-control-key': PI_CONTROL_KEY },
+      responseType: 'stream',
+      timeout: 0,
+    })
+    res.setHeader('Content-Type', piResp.headers['content-type'] || 'multipart/x-mixed-replace; boundary=frame')
+    res.setHeader('Cache-Control', 'no-cache')
+    piResp.data.pipe(res)
+    req.on('close', () => piResp.data.destroy())
+  } catch (err) {
+    if (!res.headersSent) res.status(502).send('Stream unavailable')
+  }
+})
+
 // ── Pi face-training proxies (Admin only) ───────────────────────────────────
 
 app.post('/api/pi/capture', requireAuth, requireRoles(['Admin']), async (req, res) => {

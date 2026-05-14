@@ -28,6 +28,8 @@ function StudentPortal({ currentUser, onLogout }) {
   const [view,          setView]          = React.useState('home')
   const [weeklyData,    setWeeklyData]    = React.useState([])
   const [weeklyLoading, setWeeklyLoading] = React.useState(false)
+  const [streamOk,      setStreamOk]      = React.useState(null) // null=loading, true, false
+  const streamUrl = React.useMemo(() => AttendanceAPI.getPiStreamUrl(), [])
 
   const navLinks = [
     { label: 'Home',          href: '#' },
@@ -263,41 +265,65 @@ function StudentPortal({ currentUser, onLogout }) {
                   <div className="ap-camera-corner br" />
                   {scanning && <div className="ap-scan-line" />}
 
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexDirection: 'column', gap: 10, zIndex: 1,
-                  }}>
-                    {scanState === 'success' ? (
-                      <>
-                        <div style={{
-                          width: 64, height: 64, borderRadius: '50%',
-                          background: 'rgba(16,185,129,0.18)',
-                          display: 'grid', placeItems: 'center',
-                          border: '2px solid var(--success)',
-                          color: 'var(--success)',
-                        }}>
-                          <ApIcon name="check" size={32} stroke={2.2} />
-                        </div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>
-                          Face recognised · {currentUser?.name?.split(' ')[0] || 'Student'}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-mono)' }}>
-                          Confidence 95% · ICT307 · {new Date().toTimeString().slice(0, 5)}
-                        </div>
-                      </>
-                    ) : scanning ? (
-                      <>
-                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Hold still…</div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>Scanning face</div>
-                      </>
-                    ) : (
-                      <>
-                        <ApIcon name="camera" size={42} color="rgba(255,255,255,0.4)" stroke={1.2} />
-                        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>Camera preview</div>
-                      </>
-                    )}
-                  </div>
+                  {/* Live Pi stream */}
+                  {streamUrl && streamOk !== false && (
+                    <img
+                      src={streamUrl}
+                      alt="Pi camera"
+                      onLoad={() => setStreamOk(true)}
+                      onError={() => setStreamOk(false)}
+                      style={{
+                        position: 'absolute', inset: 0,
+                        width: '100%', height: '100%',
+                        objectFit: 'cover', borderRadius: 'inherit',
+                        opacity: streamOk ? 1 : 0,
+                        transition: 'opacity 0.4s',
+                      }}
+                    />
+                  )}
+
+                  {/* Overlay: success / scanning / offline placeholder */}
+                  {(scanState !== 'idle' || streamOk !== true) && (
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexDirection: 'column', gap: 10, zIndex: 1,
+                      background: scanState !== 'idle' ? 'rgba(0,0,0,0.45)' : 'transparent',
+                      pointerEvents: 'none',
+                    }}>
+                      {scanState === 'success' ? (
+                        <>
+                          <div style={{
+                            width: 64, height: 64, borderRadius: '50%',
+                            background: 'rgba(16,185,129,0.18)',
+                            display: 'grid', placeItems: 'center',
+                            border: '2px solid var(--success)',
+                            color: 'var(--success)',
+                          }}>
+                            <ApIcon name="check" size={32} stroke={2.2} />
+                          </div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>
+                            Face recognised · {currentUser?.name?.split(' ')[0] || 'Student'}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-mono)' }}>
+                            Confidence 95% · ICT307 · {new Date().toTimeString().slice(0, 5)}
+                          </div>
+                        </>
+                      ) : scanning ? (
+                        <>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>Hold still…</div>
+                          <div style={{ fontWeight: 600, fontSize: 14 }}>Scanning face</div>
+                        </>
+                      ) : streamOk !== true ? (
+                        <>
+                          <ApIcon name="camera" size={42} color="rgba(255,255,255,0.4)" stroke={1.2} />
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>
+                            {streamOk === false ? 'Pi camera offline' : 'Connecting to camera…'}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Pi chip overlay */}
                   <div style={{
@@ -307,8 +333,13 @@ function StudentPortal({ currentUser, onLogout }) {
                     padding: '5px 10px', borderRadius: 999,
                     fontSize: 11, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-mono)',
                   }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 0 2px rgba(52,211,153,0.25)', display: 'inline-block' }} />
-                    pi-cam-04 · L2-04
+                    <span style={{
+                      width: 5, height: 5, borderRadius: '50%',
+                      background: streamOk ? '#34d399' : '#f87171',
+                      boxShadow: `0 0 0 2px ${streamOk ? 'rgba(52,211,153,0.25)' : 'rgba(248,113,113,0.25)'}`,
+                      display: 'inline-block',
+                    }} />
+                    {streamOk ? 'pi-cam · live' : 'pi-cam · offline'}
                   </div>
                 </div>
 

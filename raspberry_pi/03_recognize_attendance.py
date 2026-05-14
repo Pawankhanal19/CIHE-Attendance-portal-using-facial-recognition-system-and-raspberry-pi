@@ -130,18 +130,25 @@ def main():
             fps_frames = 0
             fps_start  = time.time()
 
-        # ── GUI (skipped in headless mode) ────────────────────────────────────
+        # ── Annotate frame (overlays used for both GUI and stream preview) ──────
+        for (top, right, bottom, left), name in zip(last_boxes, last_names):
+            color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
+            cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
+            cv2.putText(frame, name, (left, top - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+
         if not HEADLESS:
-            for (top, right, bottom, left), name in zip(last_boxes, last_names):
-                color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
-                cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-                cv2.putText(frame, name, (left, top - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-            cv2.putText(frame, f"FPS: {fps:.1f}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
             cv2.imshow("Attendance System", frame)
+
+        # ── Write stream frame every 3rd frame for the web preview ───────────
+        if frame_count % 3 == 0:
+            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
+            tmp = "/tmp/pi_frame.jpg.tmp"
+            with open(tmp, 'wb') as fh:
+                fh.write(buf.tobytes())
+            os.replace(tmp, "/tmp/pi_frame.jpg")
 
         # waitKey must run even in headless mode so OpenCV processes events
         if cv2.waitKey(1) & 0xFF == ord("q"):

@@ -133,6 +133,11 @@ const AttendanceAPI = {
     return this.request('/api/sessions/pi-status')
   },
 
+  getPiStreamUrl() {
+    const auth = this.getAuth()
+    return auth?.token ? `${API_BASE_URL}/api/pi/stream?token=${encodeURIComponent(auth.token)}` : null
+  },
+
   piCapture(studentId, count = 30) {
     return this.request('/api/pi/capture', {
       method: 'POST',

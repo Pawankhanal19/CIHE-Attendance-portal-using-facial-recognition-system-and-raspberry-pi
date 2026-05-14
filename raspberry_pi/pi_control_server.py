@@ -10,8 +10,9 @@ Run via systemd (see pi-control.service) so it starts on boot.
 import os
 import subprocess
 import threading
+import time
 import psutil
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -224,6 +225,29 @@ def restart_recognition():
         "pid":       _recognition_process.pid,
         "sessionId": session_id,
     })
+
+
+STREAM_FRAME = "/tmp/pi_frame.jpg"
+
+
+@app.route("/control/stream", methods=["GET"])
+def stream():
+    """MJPEG stream — serves the latest frame written by the recognition script."""
+    if not _auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+
+    def generate():
+        while True:
+            if os.path.exists(STREAM_FRAME):
+                try:
+                    with open(STREAM_FRAME, "rb") as f:
+                        data = f.read()
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + data + b"\r\n"
+                except OSError:
+                    pass
+            time.sleep(0.1)   # ~10 fps cap
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/control/capture", methods=["POST"])
