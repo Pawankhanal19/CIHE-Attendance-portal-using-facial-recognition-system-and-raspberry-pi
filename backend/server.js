@@ -41,6 +41,12 @@ const userSchema = new mongoose.Schema(
     studentId: { type: String, trim: true, index: true },
     faceEncodingRef: { type: String, trim: true },
     active: { type: Boolean, default: true },
+    phone: { type: String, trim: true },
+    address: { type: String, trim: true },
+    program: { type: String, trim: true },
+    office: { type: String, trim: true },
+    department: { type: String, trim: true },
+    bio: { type: String, trim: true },
   },
   { timestamps: true }
 )
@@ -149,6 +155,12 @@ function toClientUser(user) {
     studentId: user.studentId,
     active: user.active,
     createdAt: user.createdAt,
+    phone: user.phone,
+    address: user.address,
+    program: user.program,
+    office: user.office,
+    department: user.department,
+    bio: user.bio,
   }
 }
 
@@ -254,6 +266,37 @@ app.post('/api/auth/login', async (req, res) => {
     token: signToken(user),
     user: toClientUser(user),
   })
+})
+
+// Self-profile — any authenticated user can read and update their own account
+app.get('/api/me', requireAuth, async (req, res) => {
+  const user = await User.findById(req.auth.id)
+  if (!user) return res.status(404).json({ message: 'User not found.' })
+  res.json(toClientUser(user))
+})
+
+app.put('/api/me', requireAuth, async (req, res) => {
+  const allowed = ['name', 'email', 'phone', 'address', 'program', 'office', 'department', 'bio']
+  const updates = {}
+  allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f] })
+
+  if (req.body.newPassword) {
+    const user = await User.findById(req.auth.id)
+    if (!user) return res.status(404).json({ message: 'User not found.' })
+    if (!verifyPassword(req.body.currentPassword, user)) {
+      return res.status(400).json({ message: 'Current password is incorrect.' })
+    }
+    if (req.body.newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters.' })
+    }
+    const pd = hashPassword(req.body.newPassword)
+    updates.passwordHash = pd.hash
+    updates.passwordSalt = pd.salt
+  }
+
+  const user = await User.findByIdAndUpdate(req.auth.id, updates, { new: true, runValidators: true })
+  if (!user) return res.status(404).json({ message: 'User not found.' })
+  res.json(toClientUser(user))
 })
 
 app.get('/api/users', requireAuth, requireRoles(['Admin', 'Lecturer']), async (req, res) => {

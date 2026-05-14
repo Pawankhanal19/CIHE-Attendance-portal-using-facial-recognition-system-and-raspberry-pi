@@ -66,13 +66,21 @@ function ApLogo() {
   return (
     <div className="ap-logo">
       <div className="ap-logo-mark">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" strokeWidth="1.8"
+        <svg width="20" height="20" viewBox="0 0 100 100" fill="none"
+             stroke="currentColor" strokeWidth="7"
              strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="8.5" />
-          <circle cx="9" cy="11" r="0.8" fill="currentColor" stroke="none" />
-          <circle cx="15" cy="11" r="0.8" fill="currentColor" stroke="none" />
-          <path d="M9 15c1 1 5 1 6 0" />
+          {/* Corner brackets */}
+          <path d="M5 30 L5 10 Q5 5 10 5 L30 5" />
+          <path d="M70 5 L90 5 Q95 5 95 10 L95 30" />
+          <path d="M5 70 L5 90 Q5 95 10 95 L30 95" />
+          <path d="M70 95 L90 95 Q95 95 95 90 L95 70" />
+          {/* Eyes */}
+          <line x1="35" y1="38" x2="35" y2="46" strokeWidth="7" />
+          <line x1="65" y1="38" x2="65" y2="46" strokeWidth="7" />
+          {/* Nose */}
+          <path d="M50 42 L50 58 Q50 62 55 62" strokeWidth="6" />
+          {/* Smile */}
+          <path d="M35 72 Q50 82 65 72" strokeWidth="6" />
         </svg>
       </div>
       <div className="ap-logo-text">

@@ -46,6 +46,14 @@ const AttendanceAPI = {
     return auth
   },
 
+  fetchMe() {
+    return this.request('/api/me')
+  },
+
+  updateMe(data) {
+    return this.request('/api/me', { method: 'PUT', body: JSON.stringify(data) })
+  },
+
   fetchUsers() {
     return this.request('/api/users')
   },
