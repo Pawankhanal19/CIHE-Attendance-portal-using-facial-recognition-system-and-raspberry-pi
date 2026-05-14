@@ -1,0 +1,7 @@
+ATTENDANCE_API_URL=http://192.168.1.151:5050
+DEVICE_API_KEY=f29a4d287e186a93f6fddc797a092a31a1bab6b211af73bdd0c7448dd3123687
+DEVICE_ID=raspberry-pi-door-01
+DEVICE_NAME=Raspberry Pi Door Camera
+LOCATION=Main Entrance
+COURSE_CODE=ICT307
+CONTROL_KEY=your-control-key-here

@@ -133,6 +133,21 @@ const AttendanceAPI = {
     return this.request('/api/sessions/pi-status')
   },
 
+  piCapture(studentId, count = 30) {
+    return this.request('/api/pi/capture', {
+      method: 'POST',
+      body: JSON.stringify({ studentId, count }),
+    })
+  },
+
+  piTrain() {
+    return this.request('/api/pi/train', { method: 'POST' })
+  },
+
+  piJobStatus() {
+    return this.request('/api/pi/job-status')
+  },
+
   connectSocket() {
     if (!window.io) return null
     return window.io(API_BASE_URL)

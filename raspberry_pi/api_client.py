@@ -22,8 +22,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_URL      = os.getenv("API_URL",  "http://localhost:5050")
-API_KEY      = os.getenv("API_KEY",  "")
+API_URL      = os.getenv("API_URL") or os.getenv("ATTENDANCE_API_URL", "http://localhost:5050")
+API_KEY      = os.getenv("API_KEY") or os.getenv("DEVICE_API_KEY", "")
 OFFLINE_FILE = "pending_attendance.jsonl"
 
 _q = queue.Queue()

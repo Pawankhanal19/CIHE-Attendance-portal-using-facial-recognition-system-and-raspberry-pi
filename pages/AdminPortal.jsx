@@ -19,6 +19,13 @@ function AdminPortal({ currentUser, onLogout }) {
   const [analytics,    setAnalytics]    = React.useState(null)
   const [view,         setView]         = React.useState('home')
 
+  // Face training
+  const [captureId,    setCaptureId]    = React.useState('')
+  const [captureCount, setCaptureCount] = React.useState(30)
+  const [jobStatus,    setJobStatus]    = React.useState(null)   // { running, type, output, exit_code }
+  const [jobBusy,      setJobBusy]      = React.useState(false)
+  const jobPollRef = React.useRef(null)
+
   const navLinks = [{ label: 'Home', href: '#' }]
 
   function showInfo(title, message) {
@@ -100,6 +107,49 @@ function AdminPortal({ currentUser, onLogout }) {
       showInfo('Compliance Report', 'Could not generate report. Please ensure the backend server is running.')
     }
   }
+
+  function startJobPoll() {
+    if (jobPollRef.current) return
+    jobPollRef.current = setInterval(async () => {
+      try {
+        const s = await AttendanceAPI.piJobStatus()
+        setJobStatus(s)
+        if (!s.running) {
+          clearInterval(jobPollRef.current)
+          jobPollRef.current = null
+          setJobBusy(false)
+        }
+      } catch { /* Pi may be briefly unreachable */ }
+    }, 1500)
+  }
+
+  async function handleCapture() {
+    if (!captureId.trim()) { showInfo('Capture faces', 'Enter a Student ID first.'); return }
+    try {
+      setJobBusy(true)
+      setJobStatus({ running: true, type: 'capture', output: ['Starting capture…'], exit_code: null })
+      await AttendanceAPI.piCapture(captureId.trim(), captureCount)
+      startJobPoll()
+    } catch (err) {
+      setJobBusy(false)
+      showInfo('Capture failed', err.message)
+    }
+  }
+
+  async function handleTrain() {
+    try {
+      setJobBusy(true)
+      setJobStatus({ running: true, type: 'train', output: ['Starting training…'], exit_code: null })
+      await AttendanceAPI.piTrain()
+      startJobPoll()
+    } catch (err) {
+      setJobBusy(false)
+      showInfo('Training failed', err.message)
+    }
+  }
+
+  // Stop job poll on unmount
+  React.useEffect(() => () => { if (jobPollRef.current) clearInterval(jobPollRef.current) }, [])
 
   const filteredUsers = users.filter(u => {
     const m = u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -598,6 +648,101 @@ function AdminPortal({ currentUser, onLogout }) {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Face recognition training */}
+        <div className="ap-card">
+          <div className="ap-card-head">
+            <div>
+              <div className="ap-card-title">Face recognition training</div>
+              <div className="ap-card-sub">Capture face images on the Pi, then retrain the model</div>
+            </div>
+            {jobStatus && (
+              <ApStatus kind={
+                jobStatus.running ? 'warning' :
+                jobStatus.exit_code === 0 ? 'success' : 'danger'
+              } dot>
+                {jobStatus.running
+                  ? (jobStatus.type === 'capture' ? 'Capturing…' : 'Training…')
+                  : jobStatus.exit_code === 0 ? 'Done' : 'Failed'}
+              </ApStatus>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'end' }}>
+            {/* Capture section */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                Step 1 — Capture faces
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div className="ap-input-wrap" style={{ flex: '2 1 160px' }}>
+                  <ApIcon name="user" size={14} />
+                  <input className="ap-input" placeholder="Student ID (e.g. CIHE230011)"
+                         value={captureId}
+                         onChange={e => setCaptureId(e.target.value)}
+                         list="student-id-list" />
+                  <datalist id="student-id-list">
+                    {users.filter(u => u.role === 'Student' && u.studentId).map(u => (
+                      <option key={u._id || u.id} value={u.studentId}>{u.name}</option>
+                    ))}
+                  </datalist>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
+                  <span style={{ fontSize: 12, color: 'var(--ink-500)', whiteSpace: 'nowrap' }}>Samples:</span>
+                  <input className="ap-input" type="number" min="10" max="100" style={{ width: 64 }}
+                         value={captureCount}
+                         onChange={e => setCaptureCount(Number(e.target.value))} />
+                </div>
+                <button className="ap-btn primary" disabled={jobBusy} onClick={handleCapture}
+                        style={{ flex: '0 0 auto' }}>
+                  <ApIcon name="camera" size={14} />
+                  {jobBusy && jobStatus?.type === 'capture' ? 'Capturing…' : 'Start capture'}
+                </button>
+              </div>
+            </div>
+
+            {/* Train section */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-600)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                Step 2 — Train model
+              </div>
+              <button className="ap-btn dark" disabled={jobBusy} onClick={handleTrain}>
+                <ApIcon name="graph" size={14} />
+                {jobBusy && jobStatus?.type === 'train' ? 'Training…' : 'Train model'}
+              </button>
+            </div>
+          </div>
+
+          {/* Live output log */}
+          {jobStatus && (
+            <div style={{
+              marginTop: 4,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--ink-100)',
+              borderRadius: 8,
+              padding: '10px 14px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              color: 'var(--ink-700)',
+              maxHeight: 200,
+              overflowY: 'auto',
+              lineHeight: 1.7,
+            }}>
+              {(jobStatus.output || []).map((line, i) => (
+                <div key={i} style={{
+                  color: line.startsWith('[DONE]') ? 'var(--success)' :
+                         line.startsWith('[ERROR]') ? 'var(--danger)' :
+                         line.startsWith('[CAPTURE]') ? 'var(--primary)' : 'inherit',
+                }}>
+                  {line}
+                </div>
+              ))}
+              {jobStatus.running && (
+                <div style={{ color: 'var(--ink-400)', animation: 'pulse 1.2s infinite' }}>▌</div>
+              )}
+            </div>
+          )}
         </div>
 
         </>)}

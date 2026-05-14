@@ -203,11 +203,16 @@ function requirePiKey(req, res, next) {
 }
 
 function toClientLog(log) {
+  // If name was stored as the student ID (old Pi records), prefer the populated user name
+  const populatedName = log.user?.name || null
+  const displayName = (log.name && log.name !== log.personId)
+    ? log.name
+    : (populatedName || log.name || log.personId)
   return {
     id: log._id,
     person_id: log.personId,
-    user_id: log.user,
-    name: log.name,
+    user_id: log.user?._id || log.user,
+    name: displayName,
     confidence: log.confidence,
     status: log.status,
     attendance_status: log.attendanceStatus,
@@ -330,7 +335,7 @@ app.get('/api/recognition-logs', async (req, res) => {
   if (req.query.person_id) query.personId = req.query.person_id
   if (req.query.device_id) query.deviceId = req.query.device_id
 
-  const logs = await AttendanceLog.find(query).sort({ timestamp: -1 }).limit(limit)
+  const logs = await AttendanceLog.find(query).sort({ timestamp: -1 }).limit(limit).populate('user', 'name')
   res.json(logs.map(toClientLog))
 })
 
@@ -415,7 +420,7 @@ app.get('/api/analytics', requireAuth, requireRoles(['Admin', 'Lecturer']), asyn
       { $sort: { total: -1 } },
       { $limit: 10 },
     ]),
-    AttendanceLog.find().sort({ timestamp: -1 }).limit(50),
+    AttendanceLog.find().sort({ timestamp: -1 }).limit(50).populate('user', 'name'),
   ])
   res.json({ total, present, late, absent, denied, byCourse, recentLogs: recentLogs.map(toClientLog) })
 })
@@ -509,6 +514,53 @@ app.get('/api/sessions/pi-status', requireAuth, requireRoles(['Admin', 'Lecturer
     res.json({ activeSession, pi: piResp.data })
   } catch (err) {
     res.json({ activeSession, pi: { online: false } })
+  }
+})
+
+// ── Pi face-training proxies (Admin only) ───────────────────────────────────
+
+app.post('/api/pi/capture', requireAuth, requireRoles(['Admin']), async (req, res) => {
+  if (!PI_CONTROL_URL || !PI_CONTROL_KEY) {
+    return res.status(503).json({ message: 'Pi not configured in server .env' })
+  }
+  try {
+    const piResp = await axios.post(`${PI_CONTROL_URL}/control/capture`, req.body, {
+      headers: { 'x-control-key': PI_CONTROL_KEY },
+      timeout: 8000,
+    })
+    res.json(piResp.data)
+  } catch (err) {
+    res.status(502).json({ message: 'Pi unreachable', detail: err.message })
+  }
+})
+
+app.post('/api/pi/train', requireAuth, requireRoles(['Admin']), async (req, res) => {
+  if (!PI_CONTROL_URL || !PI_CONTROL_KEY) {
+    return res.status(503).json({ message: 'Pi not configured in server .env' })
+  }
+  try {
+    const piResp = await axios.post(`${PI_CONTROL_URL}/control/train`, {}, {
+      headers: { 'x-control-key': PI_CONTROL_KEY },
+      timeout: 8000,
+    })
+    res.json(piResp.data)
+  } catch (err) {
+    res.status(502).json({ message: 'Pi unreachable', detail: err.message })
+  }
+})
+
+app.get('/api/pi/job-status', requireAuth, requireRoles(['Admin']), async (req, res) => {
+  if (!PI_CONTROL_URL || !PI_CONTROL_KEY) {
+    return res.json({ running: false, type: null, output: [], exit_code: null })
+  }
+  try {
+    const piResp = await axios.get(`${PI_CONTROL_URL}/control/job-status`, {
+      headers: { 'x-control-key': PI_CONTROL_KEY },
+      timeout: 4000,
+    })
+    res.json(piResp.data)
+  } catch (err) {
+    res.json({ running: false, type: null, output: [], exit_code: null, error: err.message })
   }
 })
 
@@ -662,7 +714,7 @@ app.post('/api/pi/attendance', requirePiKey, async (req, res) => {
     personId: studentId,
     status: 'recognised',
     timestamp: { $gte: dayStart, $lt: dayEnd },
-  })
+  }).populate('user', 'name')
   if (existing) {
     return res.json({ status: 'already_marked', log: toClientLog(existing) })
   }
